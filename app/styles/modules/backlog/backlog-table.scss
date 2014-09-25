@@ -113,6 +113,9 @@
         cursor: move;
         flex-wrap: nowrap;
         position: relative;
+        &.extra-selected{
+            display: none;
+        }
         &:hover {
             @include transition (background .2s ease-in);
             background: lighten($green-taiga, 60%);

@@ -508,16 +508,27 @@ BacklogDirective = ($repo, $rootscope) ->
                 $ctrl.loadSprints()
                 $ctrl.loadProjectStats()
 
-
         # Enable move to current sprint only when there are selected us's
         $el.on "change", ".backlog-table-body .user-stories input:checkbox", (event) ->
             moveToCurrentSprintDom = $el.find("#move-to-current-sprint")
-            selectedUsDom = $el.find(".backlog-table-body .user-stories input:checkbox:checked")
+            checkedSelector = ".backlog-table-body .user-stories input:checkbox:checked"
+            selectedUsDom = $el.find(checkedSelector)
 
             if selectedUsDom.length > 0 and $scope.sprints.length > 0
                 moveToCurrentSprintDom.show()
             else
                 moveToCurrentSprintDom.hide()
+
+            target = angular.element(event.target)
+            row = target.parents(".row")
+            if selectedUsDom.length == 1
+                target.one "change", (event) ->
+                    event.stopPropagation()
+                    $el.find(".backlog-table-body .row").removeClass("extra-selected")
+                    $el.find(checkedSelector).prop("checked", false)
+
+            else if selectedUsDom.length > 1
+                row.addClass("extra-selected")
 
         $el.on "click", "#move-to-current-sprint", (event) =>
             # Calculating the us's to be modified
