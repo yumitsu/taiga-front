@@ -32,6 +32,7 @@ class EventsService
         @.sessionId = sessionId
         @.subscriptions = {}
         @.connected = false
+        @.error = false
         @.pendingMessages = []
 
         if @win.WebSocket is undefined
@@ -40,9 +41,7 @@ class EventsService
     setupConnection: ->
         @.stopExistingConnection()
 
-        wshost = @config.get("eventsHost", "localhost:8888")
-        wsscheme = @config.get("eventsScheme", "ws")
-        url = "#{wsscheme}://#{wshost}/events"
+        url = @config.get("eventsUrl", "ws://localhost:8888/events")
 
         @.ws = new @win.WebSocket(url)
         @.ws.addEventListener("open", @.onOpen)
@@ -54,11 +53,11 @@ class EventsService
         if @.ws is undefined
             return
 
-        @.ws.close()
         @.ws.removeEventListener("open", @.onOpen)
         @.ws.removeEventListener("close", @.onClose)
         @.ws.removeEventListener("error", @.onError)
         @.ws.removeEventListener("message", @.onMessage)
+        @.ws.close()
 
         delete @.ws
 
@@ -80,6 +79,10 @@ class EventsService
             @.ws.send(msg)
 
     subscribe: (scope, routingKey, callback) ->
+        if @.error
+            return
+
+        @log.debug("Subscribe to: #{routingKey}")
         subscription = {
             scope: scope,
             routingKey: routingKey,
@@ -96,6 +99,11 @@ class EventsService
         scope.$on("$destroy", => @.unsubscribe(routingKey))
 
     unsubscribe: (routingKey) ->
+        if @.error
+            return
+
+        @log.debug("Unsubscribe from: #{routingKey}")
+
         message = {
             "cmd": "unsubscribe",
             "routing_key": routingKey
@@ -131,9 +139,11 @@ class EventsService
 
     onError: (error) ->
         @log.error("WebSocket error: #{error}")
+        @.error = true
 
     onClose: ->
         @log.debug("WebSocket closed.")
+        @.connected = false
 
 
 class EventsProvider
