@@ -47,14 +47,16 @@ class TaskboardController extends mixOf(taiga.Controller, taiga.PageMixin)
         "$tgLocation",
         "$tgNavUrls"
         "$tgEvents"
+        "$tgAnalytics",
         "tgLoader"
     ]
 
     constructor: (@scope, @rootscope, @repo, @confirm, @rs, @params, @q, @appTitle, @location, @navUrls,
-                  @events, tgLoader) ->
+                  @events, @analytics, tgLoader) ->
         _.bindAll(@)
 
         @scope.sectionName = "Taskboard"
+        @.initializeEventHandlers()
 
         promise = @.loadInitialData()
 
@@ -64,16 +66,19 @@ class TaskboardController extends mixOf(taiga.Controller, taiga.PageMixin)
             tgLoader.pageLoaded()
 
         # On Error
-        promise.then null, (xhr) =>
-            if xhr and xhr.status == 404
-                @location.path(@navUrls.resolve("not-found"))
-                @location.replace()
-            return @q.reject(xhr)
+        promise.then null, @.onInitialDataError.bind(@)
 
+    initializeEventHandlers: ->
         # TODO: Reload entire taskboard after create/edit tasks seems
         # a big overhead. It should be optimized in near future.
-        @scope.$on("taskform:bulk:success", => @.loadTaskboard())
-        @scope.$on("taskform:new:success", => @.loadTaskboard())
+        @scope.$on "taskform:bulk:success", =>
+            @.loadTaskboard()
+            @analytics.trackEvent("task", "create", "bulk create task on taskboard", 1)
+
+        @scope.$on "taskform:new:success", =>
+            @.loadTaskboard()
+            @analytics.trackEvent("task", "create", "create task on taskboard", 1)
+
         @scope.$on("taskform:edit:success", => @.loadTaskboard())
         @scope.$on("taskboard:task:move", @.taskMove)
 
@@ -87,6 +92,12 @@ class TaskboardController extends mixOf(taiga.Controller, taiga.PageMixin)
         routingKey = "changes.project.#{@scope.projectId}.tasks"
         @events.subscribe @scope, routingKey, (message) =>
             @.loadTaskboard()
+
+        routingKey1 = "changes.project.#{@scope.projectId}.userstories"
+        @events.subscribe @scope, routingKey1, (message) =>
+            @.refreshTagsColors()
+            @.loadSprintStats()
+            @.loadSprint()
 
     loadProject: ->
         return @rs.projects.get(@scope.projectId).then (project) =>
@@ -117,6 +128,8 @@ class TaskboardController extends mixOf(taiga.Controller, taiga.PageMixin)
                 @scope.stats.completedPercentage = Math.round(100 * stats.completedPointsSum / stats.totalPointsSum)
             else
                 @scope.stats.completedPercentage = 0
+
+            @scope.stats.openTasks = stats.total_tasks - stats.completed_tasks
             return stats
 
     refreshTagsColors: ->
@@ -126,7 +139,7 @@ class TaskboardController extends mixOf(taiga.Controller, taiga.PageMixin)
     loadSprint: ->
         return @rs.sprints.get(@scope.projectId, @scope.sprintId).then (sprint) =>
             @scope.sprint = sprint
-            @scope.userstories = sprint.user_stories
+            @scope.userstories = _.sortBy(sprint.user_stories, "sprint_order")
             return sprint
 
     loadTasks: ->
@@ -211,7 +224,8 @@ TaskboardDirective = ($rootscope) ->
         $el.on "click", ".toggle-analytics-visibility", (event) ->
             event.preventDefault()
             target = angular.element(event.currentTarget)
-            toggleText(target, ["Hide statistics", "Show statistics"]) # TODO: i18n
+            target.toggleClass('active');
+            #toggleText(target, ["Hide statistics", "Show statistics"]) # TODO: i18n
             $rootscope.$broadcast("taskboard:graph:toggle-visibility")
 
         tableBodyDom = $el.find(".taskboard-table-body")
@@ -235,8 +249,13 @@ module.directive("tgTaskboard", ["$rootScope", TaskboardDirective])
 TaskboardTaskDirective = ($rootscope) ->
     link = ($scope, $el, $attrs, $model) ->
         $el.disableSelection()
-        if $scope.task.is_blocked
-            $el.addClass('blocked')
+
+        $scope.$watch "task", (task) ->
+            if task.is_blocked and not $el.hasClass("blocked")
+                $el.addClass("blocked")
+            else if not task.is_blocked and $el.hasClass("blocked")
+                $el.removeClass("blocked")
+
         $el.find(".icon-edit").on "click", (event) ->
             if $el.find('.icon-edit').hasClass('noclick')
                 return
@@ -280,6 +299,9 @@ TaskboardTableHeightFixerDirective = ->
     link = ($scope, $el, $attrs) ->
         timeout(500, -> renderSize($el))
 
+        $scope.$on "resize", ->
+            renderSize($el)
+
     return {link:link}
 
 
@@ -294,7 +316,7 @@ TaskboardUserDirective = ($log) ->
     template = _.template("""
     <figure class="avatar">
         <a href="#" title="Assign task" <% if (!clickable) {%>class="not-clickable"<% } %>>
-            <img src="<%= imgurl %>" alt="<%- name %>">
+            <img src="<%- imgurl %>" alt="<%- name %>">
         </a>
     </figure>
     """) # TODO: i18n

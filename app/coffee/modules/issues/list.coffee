@@ -27,7 +27,7 @@ toString = @.taiga.toString
 joinStr = @.taiga.joinStr
 groupBy = @.taiga.groupBy
 bindOnce = @.taiga.bindOnce
-debounce = @.taiga.debounce
+debounceLeading = @.taiga.debounceLeading
 startswith = @.taiga.startswith
 
 module = angular.module("taigaIssues")
@@ -50,11 +50,12 @@ class IssuesController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.Fi
         "$appTitle",
         "$tgNavUrls",
         "$tgEvents",
+        "$tgAnalytics",
         "tgLoader"
     ]
 
     constructor: (@scope, @rootscope, @repo, @confirm, @rs, @urls, @params, @q, @location, @appTitle,
-                  @navUrls, @events, tgLoader) ->
+                  @navUrls, @events, @analytics, tgLoader) ->
         @scope.sectionName = "Issues"
         @scope.filters = {}
 
@@ -73,15 +74,13 @@ class IssuesController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.Fi
             tgLoader.pageLoaded()
 
         # On Error
-        promise.then null, (xhr) =>
-            if xhr and xhr.status == 404
-                @location.path(@navUrls.resolve("not-found"))
-                @location.replace()
-            return @q.reject(xhr)
+        promise.then null, @.onInitialDataError.bind(@)
 
         @scope.$on "issueform:new:success", =>
+            @analytics.trackEvent("issue", "create", "create issue on issues list", 1)
             @.loadIssues()
             @.loadFilters()
+
 
     initializeSubscription: ->
         routingKey = "changes.project.#{@scope.projectId}.issues"
@@ -226,7 +225,12 @@ class IssuesController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.Fi
             @.markSelectedFilters(@scope.filters, urlfilters)
             @rootscope.$broadcast("filters:loaded", @scope.filters)
 
-    loadIssues: ->
+    # We need to guarantee that the last petition done here is the finally used
+    # When searching by text loadIssues can be called fastly with different parameters and
+    # can be resolved in a different order than generated
+    # We count the requests made and only if the callback is for the last one data is updated
+    loadIssuesRequests: 0
+    loadIssues: =>
         @scope.urlFilters = @.getUrlFilters()
 
         # Convert stored filters to http parameters
@@ -252,11 +256,15 @@ class IssuesController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.Fi
                 name = "type"
             @scope.httpParams[name] = values
 
-        return @rs.issues.list(@scope.projectId, @scope.httpParams).then (data) =>
-            @scope.issues = data.models
-            @scope.page = data.current
-            @scope.count = data.count
-            @scope.paginatedBy = data.paginatedBy
+        promise = @rs.issues.list(@scope.projectId, @scope.httpParams)
+        @.loadIssuesRequests += 1
+        promise.index = @.loadIssuesRequests
+        promise.then (data) =>
+            if promise.index == @.loadIssuesRequests
+                @scope.issues = data.models
+                @scope.page = data.current
+                @scope.count = data.count
+                @scope.paginatedBy = data.paginatedBy
             return data
 
     loadInitialData: ->
@@ -311,11 +319,11 @@ paginatorTemplate = """
     <% } %>
 
     <% _.each(pages, function(item) { %>
-    <li class="<%= item.classes %>">
+    <li class="<%- item.classes %>">
         <% if (item.type === "page") { %>
-        <a href="" data-pagenum="<%= item.num %>"><%= item.num %></a>
+        <a href="" data-pagenum="<%- item.num %>"><%- item.num %></a>
         <% } else if (item.type === "page-active") { %>
-        <span class="active"><%= item.num %></span>
+        <span class="active"><%- item.num %></span>
         <% } else { %>
         <span>...</span>
         <% } %>
@@ -461,8 +469,8 @@ IssuesFiltersDirective = ($log, $location, $rs, $confirm, $loading) ->
     <% _.each(filters, function(f) { %>
         <% if (!f.selected) { %>
         <a class="single-filter"
-            data-type="<%= f.type %>"
-            data-id="<%= f.id %>">
+            data-type="<%- f.type %>"
+            data-id="<%- f.id %>">
             <span class="name" <% if (f.color){ %>style="border-left: 3px solid <%- f.color %>;"<% } %>>
                 <%- f.name %>
             </span>
@@ -476,16 +484,17 @@ IssuesFiltersDirective = ($log, $location, $rs, $confirm, $loading) ->
         <% } %>
     <% }) %>
     <span class="new">
-        <input class="hidden my-filter-name" type="text" placeholder="filter name" />
+        <input class="hidden my-filter-name" type="text"
+               placeholder="Type a descriptive filter name and press Enter" />
     </span>
     """)
 
     templateSelected = _.template("""
     <% _.each(filters, function(f) { %>
     <a class="single-filter selected"
-       data-type="<%= f.type %>"
-       data-id="<%= f.id %>">
-        <span class="name" <% if (f.color){ %>style="border-left: 3px solid <%= f.color %>;"<% } %>>
+       data-type="<%- f.type %>"
+       data-id="<%- f.id %>">
+        <span class="name" <% if (f.color){ %>style="border-left: 3px solid <%- f.color %>;"<% } %>>
             <%- f.name %>
         </span>
         <span class="icon icon-delete"></span>
@@ -500,14 +509,14 @@ IssuesFiltersDirective = ($log, $location, $rs, $confirm, $loading) ->
 
         showFilters = (title, type) ->
             $el.find(".filters-cats").hide()
-            $el.find(".filter-list").show()
+            $el.find(".filter-list").removeClass("hidden")
             $el.find("h2.breadcrumb").removeClass("hidden")
             $el.find("h2 a.subfilter span.title").html(title)
             $el.find("h2 a.subfilter span.title").prop("data-type", type)
 
         showCategories = ->
             $el.find(".filters-cats").show()
-            $el.find(".filter-list").hide()
+            $el.find(".filter-list").addClass("hidden")
             $el.find("h2.breadcrumb").addClass("hidden")
 
         initializeSelectedFilters = (filters) ->
@@ -543,9 +552,10 @@ IssuesFiltersDirective = ($log, $location, $rs, $confirm, $loading) ->
                     initializeSelectedFilters($scope.filters)
                 return null
 
-
             filters = $scope.filters[type]
-            filter = _.find(filters, {id:id})
+            filterId = if type == 'tags' then taiga.toString(id) else id
+            filter = _.find(filters, {id: filterId})
+
             filter.selected = (not filter.selected)
 
             # Convert id to null as string for properly
@@ -577,7 +587,7 @@ IssuesFiltersDirective = ($log, $location, $rs, $confirm, $loading) ->
         $scope.$on "filters:loaded", (ctx, filters) ->
             initializeSelectedFilters(filters)
 
-        selectQFilter = debounce 400, (value) ->
+        selectQFilter = debounceLeading 100, (value) ->
             return if value is undefined
             if value.length == 0
                 $ctrl.replaceFilter("q", null)
@@ -630,9 +640,9 @@ IssuesFiltersDirective = ($log, $location, $rs, $confirm, $loading) ->
             target = angular.element(event.currentTarget)
             customFilterName = target.parent().data('id')
             title = "Delete custom filter" # TODO: i18n
-            subtitle = "the custom filter '#{customFilterName}'" # TODO: i18n
+            message = "the custom filter '#{customFilterName}'" # TODO: i18n
 
-            $confirm.ask(title, subtitle).then (finish) ->
+            $confirm.askOnDelete(title, message).then (finish) ->
                 promise = $ctrl.deleteMyFilter(customFilterName)
                 promise.then ->
                     promise = $ctrl.loadMyFilters()
@@ -652,7 +662,7 @@ IssuesFiltersDirective = ($log, $location, $rs, $confirm, $loading) ->
             renderFilters($scope.filters["myFilters"])
             showFilters("My filters", "myFilters")
             $el.find('.save-filters').hide()
-            $el.find('.my-filter-name').show()
+            $el.find('.my-filter-name').removeClass("hidden")
             $el.find('.my-filter-name').focus()
 
         $el.on "keyup", ".new .my-filter-name", (event) ->
@@ -672,7 +682,7 @@ IssuesFiltersDirective = ($log, $location, $rs, $confirm, $loading) ->
                         if currentfilterstype == "myFilters"
                             renderFilters($scope.filters.myFilters)
 
-                        $el.find('.my-filter-name').hide()
+                        $el.find('.my-filter-name').addClass("hidden")
                         $el.find('.save-filters').show()
 
                     loadPromise.then null, ->
@@ -686,7 +696,7 @@ IssuesFiltersDirective = ($log, $location, $rs, $confirm, $loading) ->
 
             else if event.keyCode == 27
                 $el.find('.my-filter-name').val('')
-                $el.find('.my-filter-name').hide()
+                $el.find('.my-filter-name').addClass("hidden")
                 $el.find('.save-filters').show()
 
     return {link:link}
@@ -779,7 +789,7 @@ module.directive("tgIssueStatusInlineEdition", ["$tgRepo", IssueStatusInlineEdit
 
 IssueAssignedToInlineEditionDirective = ($repo, $rootscope, popoverService) ->
     template = _.template("""
-    <img src="<%= imgurl %>" alt="<%- name %>"/>
+    <img src="<%- imgurl %>" alt="<%- name %>"/>
     <figcaption><%- name %></figcaption>
     """)
 

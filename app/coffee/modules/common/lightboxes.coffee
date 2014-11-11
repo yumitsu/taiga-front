@@ -46,9 +46,10 @@ class LightboxService extends taiga.Service
         docEl.off(".keyboard-navigation") # Hack: to fix problems in the WYSIWYG textareas when press ENTER
 
         $el.one "transitionend", =>
-            $el.css('display', 'none')
+            $el.removeAttr('style')
+            $el.removeClass("open").removeClass('close')
 
-        $el.removeClass("open")
+        $el.addClass('close')
 
     closeAll: ->
         docEl = angular.element(document)
@@ -126,16 +127,33 @@ module.directive("lightbox", ["lightboxService", LightboxDirective])
 
 # Issue/Userstory blocking message lightbox directive.
 
-BlockLightboxDirective = (lightboxService) ->
+BlockLightboxDirective = ($rootscope, $tgrepo, $confirm, lightboxService, $loading) ->
     link = ($scope, $el, $attrs, $model) ->
         $el.find("h2.title").text($attrs.title)
 
         $scope.$on "block", ->
+            $el.find(".reason").val($model.$modelValue.blocked_note)
             lightboxService.open($el)
 
-        $scope.$on "unblock", ->
-            $model.$modelValue.is_blocked = false
-            $model.$modelValue.blocked_note_html = ""
+        $scope.$on "unblock", (event, model, finishCallback) ->
+            item = $model.$modelValue.clone()
+            item.is_blocked = false
+            item.blocked_note = ""
+
+            promise = $tgrepo.save(item)
+            promise.then ->
+                $confirm.notify("success")
+                $rootscope.$broadcast("history:reload")
+                $model.$setViewValue(item)
+                finishCallback()
+
+            promise.then null, ->
+                $confirm.notify("error")
+                item.revert()
+                $model.$setViewValue(item)
+
+            promise.finally ->
+                finishCallback()
 
         $scope.$on "$destroy", ->
             $el.off()
@@ -143,19 +161,34 @@ BlockLightboxDirective = (lightboxService) ->
         $el.on "click", ".button-green", (event) ->
             event.preventDefault()
 
-            $scope.$apply ->
-                $model.$modelValue.is_blocked = true
-                $model.$modelValue.blocked_note = $el.find(".reason").val()
+            item = $model.$modelValue.clone()
+            item.is_blocked = true
+            item.blocked_note = $el.find(".reason").val()
+            $model.$setViewValue(item)
 
-            lightboxService.close($el)
+            $loading.start($el.find(".button-green"))
+
+            promise = $tgrepo.save($model.$modelValue)
+            promise.then ->
+                $confirm.notify("success")
+                $rootscope.$broadcast("history:reload")
+
+            promise.then null, ->
+                $confirm.notify("error")
+                item.revert()
+                $model.$setViewValue(item)
+
+            promise.finally ->
+                $loading.finish($el.find(".button-green"))
+                lightboxService.close($el)
 
     return {
-        templateUrl: "/partials/views/modules/lightbox_block.html"
-        link:link,
-        require:"ngModel"
+        templateUrl: "/partials/views/modules/lightbox-block.html"
+        link: link
+        require: "ngModel"
     }
 
-module.directive("tgLbBlock", ["lightboxService", BlockLightboxDirective])
+module.directive("tgLbBlock", ["$rootScope", "$tgRepo", "$tgConfirm", "lightboxService", "$tgLoading", BlockLightboxDirective])
 
 
 #############################################################################
@@ -201,10 +234,10 @@ module.directive("tgBlockingMessageInput", ["$log", BlockingMessageInputDirectiv
 
 CreateEditUserstoryDirective = ($repo, $model, $rs, $rootScope, lightboxService, $loading) ->
     link = ($scope, $el, attrs) ->
-        isNew = true
+        $scope.isNew = true
 
         $scope.$on "usform:new", (ctx, projectId, status, statusList) ->
-            isNew = true
+            $scope.isNew = true
             $scope.usStatusList = statusList
 
             $scope.us = {
@@ -228,7 +261,7 @@ CreateEditUserstoryDirective = ($repo, $model, $rs, $rootScope, lightboxService,
 
         $scope.$on "usform:edit", (ctx, us) ->
             $scope.us = us
-            isNew = false
+            $scope.isNew = false
 
             # Update texts for edition
             $el.find(".button-green span").html("Save") #TODO: i18n
@@ -263,10 +296,9 @@ CreateEditUserstoryDirective = ($repo, $model, $rs, $rootScope, lightboxService,
 
             $loading.start(target)
 
-            if isNew
+            if $scope.isNew
                 promise = $repo.create("userstories", $scope.us)
                 broadcastEvent = "usform:new:success"
-
             else
                 promise = $repo.save($scope.us)
                 broadcastEvent = "usform:edit:success"
@@ -281,6 +313,19 @@ CreateEditUserstoryDirective = ($repo, $model, $rs, $rootScope, lightboxService,
                 form.setErrors(data)
                 if data._error_message
                     $confirm.notify("error", data._error_message)
+
+        $el.on "click", ".close", (event) ->
+            event.preventDefault()
+            $scope.$apply ->
+                $scope.us.revert()
+            lightboxService.close($el)
+
+        $el.keydown (event) ->
+            code = if event.keyCode then event.keyCode else event.which
+            if code == 27
+                lightboxService.close($el)
+                $scope.$apply ->
+                    $scope.us.revert()
 
         $scope.$on "$destroy", ->
             $el.off()
@@ -314,14 +359,11 @@ CreateBulkUserstoriesDirective = ($repo, $rs, $rootscope, lightboxService, $load
 
         $el.on "click", ".button-green", debounce 2000, (event) ->
             event.preventDefault()
+            target = angular.element(event.currentTarget)
 
-            form = $el.find("form").checksley({
-                onlyOneErrorElement: true
-            })
+            form = $el.find("form").checksley({onlyOneErrorElement: true})
             if not form.validate()
                 return
-
-            target = angular.element(event.currentTarget)
 
             $loading.start(target)
 
@@ -361,7 +403,7 @@ usersTemplate = _.template("""
 <div class="watcher-single active">
     <div class="watcher-avatar">
         <a href="" title="Assigned to" class="avatar">
-            <img src="<%= selected.photo %>"/>
+            <img src="<%- selected.photo %>"/>
         </a>
     </div>
     <a href="" title="<%- selected.full_name_display %>" class="watcher-name">
@@ -375,7 +417,7 @@ usersTemplate = _.template("""
 <div class="watcher-single" data-user-id="<%- user.id %>">
     <div class="watcher-avatar">
         <a href="#" title="Assigned to" class="avatar">
-            <img src="<%= user.photo %>" />
+            <img src="<%- user.photo %>" />
         </a>
     </div>
     <a href="" title="<%- user.full_name_display %>" class="watcher-name">
@@ -562,7 +604,7 @@ WatchersLightboxDirective = ($repo, lightboxService, lightboxKeyboardNavigationS
             $el.off()
 
     return {
-        templateUrl: "/partials/views/modules/lightbox_users.html"
+        templateUrl: "/partials/views/modules/lightbox-users.html"
         link:link
     }
 

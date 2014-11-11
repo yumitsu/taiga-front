@@ -46,11 +46,13 @@ urls = {
     "home": "/"
     "error": "/error"
     "not-found": "/not-found"
+    "permission-denied": "/permission-denied"
 
     "login": "/login"
     "forgot-password": "/forgot-password"
     "change-password": "/change-password/:token"
     "change-email": "/change-email/:token"
+    "cancel-account": "/cancel-account/:token"
     "register": "/register"
     "invitation": "/invitation/:token"
     "create-project": "/create-project"
@@ -65,17 +67,13 @@ urls = {
     "project-search": "/project/:project/search"
 
     "project-userstories-detail": "/project/:project/us/:ref"
-    "project-userstories-detail-edit": "/project/:project/us/:ref/edit"
 
     "project-tasks-detail": "/project/:project/task/:ref"
-    "project-tasks-detail-edit": "/project/:project/task/:ref/edit"
 
     "project-issues-detail": "/project/:project/issue/:ref"
-    "project-issues-detail-edit": "/project/:project/issue/:ref/edit"
 
     "project-wiki": "/project/:project/wiki",
     "project-wiki-page": "/project/:project/wiki/:slug",
-    "project-wiki-page-edit": "/project/:project/wiki/:slug/edit",
 
     # Admin
     "project-admin-home": "/project/:project/admin/project-profile/details"

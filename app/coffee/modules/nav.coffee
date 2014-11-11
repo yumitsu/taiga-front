@@ -52,14 +52,14 @@ class ProjectsNavigationController extends taiga.Controller
         return @rs.projects.list().then (projects) =>
             for project in projects
                 project.url = @projectUrl.get(project)
-
             @scope.projects = projects
             @scope.filteredProjects = projects
             @scope.filterText = ""
             return projects
 
     newProject: ->
-        @rootscope.$broadcast("projects:create")
+        @scope.$apply () =>
+            @rootscope.$broadcast("projects:create")
 
     filterProjects: (text) ->
         @scope.filteredProjects = _.filter @scope.projects, (project) ->
@@ -137,9 +137,8 @@ ProjectsNavigationDirective = ($rootscope, animationFrame, $timeout, tgLoader, $
         $el.html(html)
         renderProjects($el, projects)
 
-    link = ($scope, $el, $attrs, $ctrl) ->
-        $ctrl = $el.controller()
-
+    link = ($scope, $el, $attrs, $ctrls) ->
+        $ctrl = $ctrls[0]
         $rootscope.$on("project:loaded", hideMenu)
 
         overlay.on 'click', () ->
@@ -188,9 +187,14 @@ ProjectsNavigationDirective = ($rootscope, animationFrame, $timeout, tgLoader, $
             $el.trigger("regenerate:pagination")
 
         $scope.$watch "projects", (projects) ->
-            render($el, $scope.projects) if projects?
+            render($el, projects) if projects?
 
-    return {link: link}
+    return {
+        require: ["tgProjectsNav"]
+        controller: ProjectsNavigationController
+        link: link
+    }
+
 
 module.directive("tgProjectsNav", ["$rootScope", "animationFrame", "$timeout", "tgLoader", "$tgLocation",
                                    ProjectsNavigationDirective])
@@ -200,7 +204,7 @@ module.directive("tgProjectsNav", ["$rootScope", "animationFrame", "$timeout", "
 ## Project
 #############################################################################
 
-ProjectMenuDirective = ($log, $compile, $auth, $rootscope, $tgAuth, $location, $navUrls) ->
+ProjectMenuDirective = ($log, $compile, $auth, $rootscope, $tgAuth, $location, $navUrls, $config) ->
     menuEntriesTemplate = _.template("""
     <div class="menu-container">
         <ul class="main-nav">
@@ -262,10 +266,13 @@ ProjectMenuDirective = ($log, $compile, $auth, $rootscope, $tgAuth, $location, $
                     <li><a href="" title="User Profile", tg-nav="user-settings-user-profile:project=project.slug">User Profile</a></li>
                     <li><a href="" title="Change Password", tg-nav="user-settings-user-change-password:project=project.slug">Change Password</a></li>
                     <li><a href="" title="Notifications", tg-nav="user-settings-mail-notifications:project=project.slug">Notifications</a></li>
+                    <% if (feedbackEnabled) { %>
+                    <li><a href="" class="feedback" title="Feedback"">Feedback</a></li>
+                    <% } %>
                     <li><a href="" title="Logout" class="logout">Logout</a></li>
                 </ul>
                 <a href="" title="User preferences" class="avatar" id="nav-user-settings">
-                    <img src="<%= user.photo %>" alt="<%= user.full_name_display %>" />
+                    <img src="<%- user.photo %>" alt="<%- user.full_name_display %>" />
                 </a>
             </div>
         </div>
@@ -274,43 +281,51 @@ ProjectMenuDirective = ($log, $compile, $auth, $rootscope, $tgAuth, $location, $
 
     mainTemplate = _.template("""
     <div class="logo-container logo">
-        <svg xmlns:svg="http://www.w3.org/2000/svg" xmlns="http://www.w3.org/2000/svg"
-             viewBox="0 0 134.2 134.3" version="1.1" preserveAspectRatio="xMidYMid meet" shape-rendering="geometricPrecision">
+        <svg xmlns:svg="http://www.w3.org/2000/svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 134.2 134.3" version="1.1" preserveAspectRatio="xMidYMid meet">
             <style>
-                svg {
-                    transform: scale(.99);
+                .top {
+                    -webkit-transform-origin: 50% 50%;
+                    transform: rotate(0deg);
                 }
-                path {
-                    fill:#f5f5f5;
-                    opacity:0.7;
+                path{
+                    fill:#fff;
+                    opacity: .6;
+                }
+                svg:hover .top {
+                    transform: rotate(90deg);
+                    transition: all .3s ease-in;
+                }
+                svg:hover {
+                    cursor: pointer;
+                }
+                @-webkit-keyframes rotate {
+                    50% {
+                        -webkit-transform: rotate(360deg);
+                    }
+                }
+                @keyframes rotate {
+                    50% {
+                        transform: rotate(360deg);
+                    }
                 }
             </style>
             <g transform="translate(-307.87667,-465.22863)">
                 <g class="bottom">
-                    <path transform="matrix(-0.14066483,0.99005727,-0.99005727,0.14066483,0,0)"
-                          d="m561.8-506.6 42 0 0 42-42 0z" />
-                    <path transform="matrix(0.14066483,-0.99005727,0.99005727,-0.14066483,0,0)"
-                          d="m-645.7 422.6 42 0 0 42-42 0z" />
-                    <path transform="matrix(0.99005727,0.14066483,0.14066483,0.99005727,0,0)"
-                          d="m266.6 451.9 42 0 0 42-42 0z" />
-                    <path transform="matrix(-0.99005727,-0.14066483,-0.14066483,-0.99005727,0,0)"
-                          d="m-350.6-535.9 42 0 0 42-42 0z" />
+                    <path transform="matrix(-0.14066483,0.99005727,-0.99005727,0.14066483,0,0)" d="m561.8-506.6 42 0 0 42-42 0z" />
+                    <path transform="matrix(0.14066483,-0.99005727,0.99005727,-0.14066483,0,0)" d="m-645.7 422.6 42 0 0 42-42 0z" />
+                    <path transform="matrix(0.99005727,0.14066483,0.14066483,0.99005727,0,0)" d="m266.6 451.9 42 0 0 42-42 0z" />
+                    <path transform="matrix(-0.99005727,-0.14066483,-0.14066483,-0.99005727,0,0)" d="m-350.6-535.9 42 0 0 42-42 0z" />
                 </g>
                 <g class="top">
-                    <path transform="matrix(-0.60061118,-0.79954125,0.60061118,-0.79954125,0,0)"
-                          d="m-687.1-62.7 42 0 0 42-42 0z" />
-                    <path transform="matrix(-0.79954125,0.60061118,-0.79954125,-0.60061118,0,0)"
-                          d="m166.6-719.6 42 0 0 42-42 0z" />
-                    <path transform="matrix(0.60061118,0.79954125,-0.60061118,0.79954125,0,0)"
-                          d="m603.1-21.3 42 0 0 42-42 0z" />
-                    <path transform="matrix(0.79954125,-0.60061118,0.79954125,0.60061118,0,0)"
-                          d="m-250.7 635.8 42 0 0 42-42 0z" />
-                    <path transform="matrix(0.70710678,0.70710678,-0.70710678,0.70710678,0,0)"
-                          d="m630.3 100 22.6 0 0 22.6-22.6 0z" />
+                    <path transform="matrix(-0.60061118,-0.79954125,0.60061118,-0.79954125,0,0)" d="m-687.1-62.7 42 0 0 42-42 0z" />
+                    <path transform="matrix(-0.79954125,0.60061118,-0.79954125,-0.60061118,0,0)" d="m166.6-719.6 42 0 0 42-42 0z" />
+                    <path transform="matrix(0.60061118,0.79954125,-0.60061118,0.79954125,0,0)" d="m603.1-21.3 42 0 0 42-42 0z" />
+                    <path transform="matrix(0.79954125,-0.60061118,0.79954125,0.60061118,0,0)" d="m-250.7 635.8 42 0 0 42-42 0z" />
                 </g>
+                <path class="center" transform="matrix(0.70710678,0.70710678,-0.70710678,0.70710678,0,0)" d="m630.3 100 22.6 0 0 22.6-22.6 0z" />
             </g>
         </svg>
-        <span class="item">taiga</span>
+        <span class="item">taiga<sup>[beta]</sup></span>
     </div>
     <div class="menu-container"></div>
     """)
@@ -325,7 +340,14 @@ ProjectMenuDirective = ($log, $compile, $auth, $rootscope, $tgAuth, $location, $
     renderMenuEntries = ($el, targetScope, project={}) ->
         container = $el.find(".menu-container")
         sectionName = targetScope.section
-        dom = $compile(menuEntriesTemplate({user: $auth.getUser(), project: project}))(targetScope)
+
+        ctx = {
+            user: $auth.getUser(),
+            project: project,
+            feedbackEnabled: $config.get("feedbackEnabled")
+        }
+        dom = $compile(menuEntriesTemplate(ctx))(targetScope)
+
         dom.find("a.active").removeClass("active")
         dom.find("#nav-#{sectionName} > a").addClass("active")
 
@@ -354,7 +376,6 @@ ProjectMenuDirective = ($log, $compile, $auth, $rootscope, $tgAuth, $location, $
         $el.on "click", ".logo", (event) ->
             event.preventDefault()
             target = angular.element(event.currentTarget)
-            console.log target
             $rootscope.$broadcast("nav:projects-list:open")
 
         $el.on "click", ".user-settings .avatar", (event) ->
@@ -371,6 +392,10 @@ ProjectMenuDirective = ($log, $compile, $auth, $rootscope, $tgAuth, $location, $
             event.preventDefault()
             $rootscope.$broadcast("search-box:show", project)
 
+        $el.on "click", ".feedback", (event) ->
+            event.preventDefault()
+            $rootscope.$broadcast("feedback:show")
+
         $scope.$on "projects:loaded", (listener) ->
             $el.addClass("hidden")
             listener.stopPropagation()
@@ -386,4 +411,4 @@ ProjectMenuDirective = ($log, $compile, $auth, $rootscope, $tgAuth, $location, $
     return {link: link}
 
 module.directive("tgProjectMenu", ["$log", "$compile", "$tgAuth", "$rootScope", "$tgAuth", "$tgLocation",
-                                   "$tgNavUrls", ProjectMenuDirective])
+                                   "$tgNavUrls", "$tgConfig", ProjectMenuDirective])

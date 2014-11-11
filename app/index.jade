@@ -6,7 +6,7 @@ html(lang="en", ng-app="taiga")
         meta(http-equiv="content-type", content="text/html; charset=utf-8")
         meta(name="description", content="Taiga Landing page")
         meta(name="keywords", content="Agile, Taiga, Management, Github")
-        meta(name="viewport", content="width=device-width, user-scalable=no")
+        //-meta(name="viewport", content="width=device-width, user-scalable=no")
         link(rel="stylesheet", href="/styles/main.css")
         link(rel="icon", type="image/png", href="/images/favicon.png")
 
@@ -21,19 +21,20 @@ html(lang="en", ng-app="taiga")
 
         div.master(ng-view)
 
-        div.hidden.lightbox.lightbox_confirm-delete
-            include partials/views/modules/lightbox_confirm-delete
-        div.hidden.lightbox.lightbox-ask-choice
+        div.lightbox.lightbox-generic-ask
+            include partials/views/modules/lightbox-generic-ask
+        div.lightbox.lightbox-ask-choice
             include partials/views/modules/lightbox-ask-choice
-        div.hidden.lightbox.lightbox-generic-success
+        div.lightbox.lightbox-generic-success
             include partials/views/modules/lightbox-generic-success
-        div.hidden.lightbox.lightbox-generic-error
+        div.lightbox.lightbox-generic-error
             include partials/views/modules/lightbox-generic-error
         div.lightbox.lightbox-search(tg-search-box)
             include partials/views/modules/lightbox-search
+        div.lightbox.lightbox-feedback.lightbox-generic-form(tg-lb-feedback)
+            include partials/views/modules/lightbox-feedback
 
         include partials/views/modules/loader
 
         script(src="/js/libs.js?v=#{v}")
         script(src="/js/app.js?v=#{v}")
-        tg-analytics

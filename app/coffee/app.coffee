@@ -52,30 +52,22 @@ configure = ($routeProvider, $locationProvider, $httpProvider, $provide, $tgEven
     # User stories
     $routeProvider.when("/project/:pslug/us/:usref",
         {templateUrl: "/partials/us-detail.html", resolve: {loader: tgLoaderProvider.add()}})
-    $routeProvider.when("/project/:pslug/us/:usref/edit",
-        {templateUrl: "/partials/us-detail-edit.html"})
 
     # Tasks
     $routeProvider.when("/project/:pslug/task/:taskref",
         {templateUrl: "/partials/task-detail.html", resolve: {loader: tgLoaderProvider.add()}})
-    $routeProvider.when("/project/:pslug/task/:taskref/edit",
-        {templateUrl: "/partials/task-detail-edit.html"})
 
     # Wiki
     $routeProvider.when("/project/:pslug/wiki",
         {redirectTo: (params) -> "/project/#{params.pslug}/wiki/home"}, )
     $routeProvider.when("/project/:pslug/wiki/:slug",
         {templateUrl: "/partials/wiki.html", resolve: {loader: tgLoaderProvider.add()}})
-    $routeProvider.when("/project/:pslug/wiki/:slug/edit",
-        {templateUrl: "/partials/wiki-edit.html"})
 
     # Issues
     $routeProvider.when("/project/:pslug/issues",
         {templateUrl: "/partials/issues.html", resolve: {loader: tgLoaderProvider.add()}})
     $routeProvider.when("/project/:pslug/issue/:issueref",
-        {templateUrl: "/partials/issues-detail.html"})
-    $routeProvider.when("/project/:pslug/issue/:issueref/edit",
-        {templateUrl: "/partials/issues-detail-edit.html"})
+        {templateUrl: "/partials/issues-detail.html", resolve: {loader: tgLoaderProvider.add()}})
 
     # Admin
     $routeProvider.when("/project/:pslug/admin/project-profile/details",
@@ -114,6 +106,8 @@ configure = ($routeProvider, $locationProvider, $httpProvider, $provide, $tgEven
           {templateUrl: "/partials/mail-notifications.html"})
     $routeProvider.when("/change-email/:email_token",
           {templateUrl: "/partials/change-email.html"})
+    $routeProvider.when("/cancel-account/:cancel_token",
+        {templateUrl: "/partials/cancel-account.html"})
 
     # Auth
     $routeProvider.when("/login",
@@ -134,6 +128,8 @@ configure = ($routeProvider, $locationProvider, $httpProvider, $provide, $tgEven
         {templateUrl: "/partials/error.html"})
     $routeProvider.when("/not-found",
         {templateUrl: "/partials/not-found.html"})
+    $routeProvider.when("/permission-denied",
+        {templateUrl: "/partials/permission-denied.html"})
 
     $routeProvider.otherwise({redirectTo: '/not-found'})
     $locationProvider.html5Mode(true)
@@ -170,7 +166,6 @@ configure = ($routeProvider, $locationProvider, $httpProvider, $provide, $tgEven
     $provide.factory("authHttpIntercept", ["$q", "$location", "$tgConfirm", "$tgNavUrls",
                                            "lightboxService", authHttpIntercept])
     $httpProvider.responseInterceptors.push('authHttpIntercept')
-    $httpProvider.interceptors.push('loaderInterceptor')
 
     window.checksley.updateValidators({
         linewidth: (val, width) ->
@@ -186,21 +181,20 @@ configure = ($routeProvider, $locationProvider, $httpProvider, $provide, $tgEven
         linewidth: "The subject must have a maximum size of %s"
     })
 
-init = ($log, $i18n, $config, $rootscope, $auth, $events) ->
+init = ($log, $i18n, $config, $rootscope, $auth, $events, $analytics) ->
     $i18n.initialize($config.get("defaultLanguage"))
     $log.debug("Initialize application")
 
     if $auth.isAuthenticated()
         $events.setupConnection()
 
-# Default Value for taiga local config module.
-angular.module("taigaLocalConfig", []).value("localconfig", {})
+    $analytics.initialize()
+
 
 modules = [
     # Main Global Modules
     "taigaBase",
     "taigaCommon",
-    "taigaConfig",
     "taigaResources",
     "taigaLocales",
     "taigaAuth",
@@ -220,6 +214,7 @@ modules = [
     "taigaNavMenu",
     "taigaProject",
     "taigaUserSettings",
+    "taigaFeedback",
     "taigaPlugins",
 
     # Vendor modules
@@ -247,5 +242,6 @@ module.run([
     "$rootScope",
     "$tgAuth",
     "$tgEvents",
+    "$tgAnalytics",
     init
 ])

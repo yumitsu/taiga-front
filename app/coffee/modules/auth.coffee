@@ -20,6 +20,7 @@
 ###
 
 taiga = @.taiga
+debounce = @.taiga.debounce
 
 module = angular.module("taigaAuth", ["taigaResources"])
 
@@ -137,6 +138,10 @@ class AuthService extends taiga.Service
         data = _.clone(data, false)
         return @http.post(url, data)
 
+    cancelAccount: (data) ->
+        url = @urls.resolve("users-cancel-account")
+        data = _.clone(data, false)
+        return @http.post(url, data)
 
 module.service("$tgAuth", AuthService)
 
@@ -152,7 +157,7 @@ PublicRegisterMessageDirective = ($config, $navUrls) ->
     template = _.template("""
     <p class="login-text">
         <span>Not registered yet?</span>
-        <a href="<%= url %>" tg-nav="register" title="Register"> create your free account here</a>
+        <a href="<%- url %>" tg-nav="register" title="Register"> create your free account here</a>
     </p>""")
 
     templateFn = ->
@@ -172,9 +177,7 @@ module.directive("tgPublicRegisterMessage", ["$tgConfig", "$tgNavUrls", PublicRe
 
 LoginDirective = ($auth, $confirm, $location, $config, $routeParams, $navUrls, $events) ->
     link = ($scope, $el, $attrs) ->
-        $scope.data = {}
-
-        onSuccessSubmit = (response) ->
+        onSuccess = (response) ->
             if $routeParams['next'] and $routeParams['next'] != $navUrls.resolve("login")
                 nextUrl = $routeParams['next']
             else
@@ -183,16 +186,21 @@ LoginDirective = ($auth, $confirm, $location, $config, $routeParams, $navUrls, $
             $events.setupConnection()
             $location.path(nextUrl)
 
-        onErrorSubmit = (response) ->
+        onError = (response) ->
             $confirm.notify("light-error", "According to our Oompa Loompas, your username/email
                                             or password are incorrect.") #TODO: i18n
         submit = ->
-            form = $el.find("form").checksley()
+            form = new checksley.Form($el.find("form.login-form"))
             if not form.validate()
                 return
 
-            promise = $auth.login($scope.data)
-            promise.then(onSuccessSubmit, onErrorSubmit)
+            data = {
+                "username": $el.find("form.login-form input[name=username]").val(),
+                "password": $el.find("form.login-form input[name=password]").val()
+            }
+
+            promise = $auth.login(data)
+            return promise.then(onSuccess, onError)
 
         $el.on "click", "a.button-login", (event) ->
             event.preventDefault()
@@ -211,26 +219,27 @@ module.directive("tgLogin", ["$tgAuth", "$tgConfirm", "$tgLocation", "$tgConfig"
 ## Register Directive
 #############################################################################
 
-RegisterDirective = ($auth, $confirm, $location, $navUrls, $config) ->
+RegisterDirective = ($auth, $confirm, $location, $navUrls, $config, $analytics) ->
     link = ($scope, $el, $attrs) ->
         if not $config.get("publicRegisterEnabled")
             $location.path($navUrls.resolve("not-found"))
             $location.replace()
 
         $scope.data = {}
-        form = $el.find("form").checksley()
+        form = $el.find("form").checksley({onlyOneErrorElement: true})
 
         onSuccessSubmit = (response) ->
+            $analytics.trackEvent("auth", "register", "user registration", 1)
             $confirm.notify("success", "Our Oompa Loompas are happy, welcome to Taiga.") #TODO: i18n
             $location.path($navUrls.resolve("home"))
 
         onErrorSubmit = (response) ->
             if response.data._error_message?
                 $confirm.notify("light-error", "According to our Oompa Loompas there was an error. #{response.data._error_message}") #TODO: i18n
-                
+
             form.setErrors(response.data)
 
-        submit = ->
+        submit = debounce 2000, =>
             if not form.validate()
                 return
 
@@ -248,7 +257,7 @@ RegisterDirective = ($auth, $confirm, $location, $navUrls, $config) ->
     return {link:link}
 
 module.directive("tgRegister", ["$tgAuth", "$tgConfirm", "$tgLocation", "$tgNavUrls", "$tgConfig",
-                                RegisterDirective])
+                                "$tgAnalytics", RegisterDirective])
 
 #############################################################################
 ## Forgot Password Directive
@@ -270,7 +279,7 @@ ForgotPasswordDirective = ($auth, $confirm, $location, $navUrls) ->
             $confirm.notify("light-error", "According to our Oompa Loompas,
                                             your are not registered yet.") #TODO: i18n
 
-        submit = ->
+        submit = debounce 2000, =>
             if not form.validate()
                 return
 
@@ -315,7 +324,7 @@ ChangePasswordFromRecoveryDirective = ($auth, $confirm, $location, $params, $nav
             $confirm.notify("light-error", "One of our Oompa Loompas say
                             '#{response.data._error_message}'.") #TODO: i18n
 
-        submit = ->
+        submit = debounce 2000, =>
             if not form.validate()
                 return
 
@@ -339,7 +348,7 @@ module.directive("tgChangePasswordFromRecovery", ["$tgAuth", "$tgConfirm", "$tgL
 ## Invitation
 #############################################################################
 
-InvitationDirective = ($auth, $confirm, $location, $params, $navUrls) ->
+InvitationDirective = ($auth, $confirm, $location, $params, $navUrls, $analytics) ->
     link = ($scope, $el, $attrs) ->
         token = $params.token
 
@@ -354,18 +363,19 @@ InvitationDirective = ($auth, $confirm, $location, $params, $navUrls) ->
 
         # Login form
         $scope.dataLogin = {token: token}
-        loginForm = $el.find("form.login-form").checksley()
+        loginForm = $el.find("form.login-form").checksley({onlyOneErrorElement: true})
 
         onSuccessSubmitLogin = (response) ->
+            $analytics.trackEvent("auth", "invitationAccept", "invitation accept with existing user", 1)
             $location.path($navUrls.resolve("project", {project: $scope.invitation.project_slug}))
             $confirm.notify("success", "You've successfully joined this project",
-                                       "Welcome to #{$scope.invitation.project_name}")
+                                       "Welcome to #{_.escape($scope.invitation.project_name)}")
 
         onErrorSubmitLogin = (response) ->
             $confirm.notify("light-error", "According to our Oompa Loompas, your are not registered yet or
                                             typed an invalid password.") #TODO: i18n
 
-        submitLogin = ->
+        submitLogin = debounce 2000, =>
             if not loginForm.validate()
                 return
 
@@ -385,15 +395,16 @@ InvitationDirective = ($auth, $confirm, $location, $params, $navUrls) ->
         registerForm = $el.find("form.register-form").checksley()
 
         onSuccessSubmitRegister = (response) ->
+            $analytics.trackEvent("auth", "invitationAccept", "invitation accept with new user", 1)
             $location.path($navUrls.resolve("project", {project: $scope.invitation.project_slug}))
             $confirm.notify("success", "You've successfully joined this project",
-                                       "Welcome to #{$scope.invitation.project_name}")
+                                       "Welcome to #{_.escape($scope.invitation.project_name)}")
 
         onErrorSubmitRegister = (response) ->
             $confirm.notify("light-error", "According to our Oompa Loompas, that
                                             username or email is already in use.") #TODO: i18n
 
-        submitRegister = ->
+        submitRegister = debounce 2000, =>
             if not registerForm.validate()
                 return
 
@@ -411,7 +422,7 @@ InvitationDirective = ($auth, $confirm, $location, $params, $navUrls) ->
     return {link:link}
 
 module.directive("tgInvitation", ["$tgAuth", "$tgConfirm", "$tgLocation", "$routeParams",
-                                  "$tgNavUrls", InvitationDirective])
+                                  "$tgNavUrls", "$tgAnalytics", InvitationDirective])
 
 #############################################################################
 ## Change Email
@@ -452,3 +463,42 @@ ChangeEmailDirective = ($repo, $model, $auth, $confirm, $location, $params, $nav
 
 module.directive("tgChangeEmail", ["$tgRepo", "$tgModel", "$tgAuth", "$tgConfirm", "$tgLocation", "$routeParams",
                                    "$tgNavUrls", ChangeEmailDirective])
+
+#############################################################################
+## Cancel account
+#############################################################################
+
+CancelAccountDirective = ($repo, $model, $auth, $confirm, $location, $params, $navUrls) ->
+    link = ($scope, $el, $attrs) ->
+        $scope.data = {}
+        $scope.data.cancel_token = $params.cancel_token
+        form = $el.find("form").checksley()
+
+        onSuccessSubmit = (response) ->
+            $auth.logout()
+            $location.path($navUrls.resolve("home"))
+            $confirm.success("Our Oompa Loompas removed your account") #TODO: i18n
+
+        onErrorSubmit = (response) ->
+            $confirm.notify("error", "One of our Oompa Loompas says
+                            '#{response.data._error_message}'.") #TODO: i18n
+
+        submit = ->
+            if not form.validate()
+                return
+
+            promise = $auth.cancelAccount($scope.data)
+            promise.then(onSuccessSubmit, onErrorSubmit)
+
+        $el.on "submit", (event) ->
+            event.preventDefault()
+            submit()
+
+        $el.on "click", "a.button-cancel-account", (event) ->
+            event.preventDefault()
+            submit()
+
+    return {link:link}
+
+module.directive("tgCancelAccount", ["$tgRepo", "$tgModel", "$tgAuth", "$tgConfirm", "$tgLocation", "$routeParams",
+                                   "$tgNavUrls", CancelAccountDirective])

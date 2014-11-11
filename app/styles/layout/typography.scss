@@ -1,0 +1,245 @@
+// Typography
+
+// Font face
+
+@each $font-face in OpenSans-CondLight, opensans-regular, opensans-semibold, taiga {
+    @font-face {
+        font-family: '#{$font-face}';
+        src: url('../fonts/#{$font-face}.eot?#iefix') format('embedded-opentype'),
+            url('../fonts/#{$font-face}.woff') format('woff'),
+            url('../fonts/#{$font-face}.ttf')  format('truetype'),
+            url('../fonts/#{$font-face}.svg#{$font-face}') format('svg');
+    }
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    color: $blackish;
+    font-weight: normal;
+    a {
+        font-weight: inherit;
+    }
+}
+
+h1 {
+    @extend %xxlarge;
+    @extend %title;
+    line-height: 3.4rem;
+    margin-bottom: 1rem;
+    text-transform: uppercase;
+    span {
+        @extend %xxlarge;
+        line-height: 3.4rem;
+        margin-right: .5rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        vertical-align: bottom;
+        white-space: nowrap;
+        &.green,
+        &:last-child {
+            flex-shrink: 0;
+        }
+    }
+    .project-name {
+        display: inline-block;
+        max-width: 60%;
+    }
+    .project-name-short {
+        display: inline-block;
+        max-width: 40%;
+    }
+    .green {
+        color: $green-taiga;
+    }
+    .date {
+        color: $gray-light;
+        @include ellipsis(500px);
+    }
+}
+
+h2 {
+    @extend %xlarge;
+    @extend %title;
+    margin-bottom: 1rem;
+}
+
+p {
+    margin: 0 0 20px;
+    img {
+        margin: 0;
+    }
+}
+
+em { font-style: italic; }
+strong {
+    font-weight: bold;
+}
+
+hr {
+    border: solid #ddd;
+    border-width: 1px 0 0;
+    clear: both;
+    height: 0;
+    margin: 10px 0 30px;
+}
+
+// __Links__
+a,
+a:visited {
+    color: $grayer;
+    text-decoration: none;
+    &:hover {
+        @include transition (color .3s linear);
+        color: $green-taiga;
+    }
+}
+
+// Taiga Icons
+
+[data-icon]:before {
+    content: attr(data-icon);
+    font-family: 'taiga' !important;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-font-smoothing: antialiased;
+    font-style: normal !important;
+    font-variant: normal !important;
+    font-weight: normal !important;
+    line-height: 1;
+    speak: none;
+    text-transform: none !important;
+}
+
+[class^='icon-']:before,
+[class*=' icon-']:before {
+    font-family: 'taiga' !important;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-font-smoothing: antialiased;
+    font-style: normal !important;
+    font-variant: normal !important;
+    font-weight: normal !important;
+    line-height: 1;
+    speak: none;
+    text-transform: none !important;
+}
+
+.icon-backlog:before {
+    content: 'a';
+}
+.icon-issues:before {
+    content: 'b';
+}
+.icon-kanban:before {
+    content: 'c';
+}
+.icon-search:before {
+    content: 'd';
+}
+.icon-video:before {
+    content: 'e';
+}
+.icon-wiki:before {
+    content: 'f';
+}
+.icon-settings:before {
+    content: 'g';
+}
+.icon-move:before {
+    content: 'h';
+}
+.icon-filter:before {
+    content: 'i';
+}
+.icon-arrow-up:before {
+    content: 'j';
+}
+.icon-arrow-right:before {
+    content: 'k';
+}
+.icon-arrow-left:before {
+    content: 'l';
+}
+.icon-arrow-bottom:before {
+    content: 'm';
+}
+.icon-edit:before {
+    content: 'n';
+}
+.icon-delete:before {
+    content: 'o';
+}
+.icon-iocaine:before {
+    content: 'p';
+}
+.icon-drag-h:before {
+    content: 'q';
+}
+.icon-drag-v:before {
+    content: 'r';
+}
+.icon-document:before {
+    content: 's';
+}
+.icon-plus:before {
+    content: 't';
+}
+.icon-reload:before {
+    content: 'u';
+}
+.icon-warning:before {
+    content: 'v';
+}
+.icon-notification-error:before {
+    content: 'w';
+}
+.icon-github:before {
+    content: 'x';
+}
+.icon-check-square:before {
+    content: 'y';
+}
+.icon-warning-alt:before {
+    content: 'z';
+}
+.icon-floppy:before {
+    content: 'A';
+}
+.icon-comment:before {
+    content: 'B';
+}
+.icon-documents:before {
+    content: 'C';
+}
+.icon-attachments:before {
+    content: 'D';
+}
+.icon-caret-up:before {
+    content: 'E';
+}
+.icon-caret-down:before {
+    content: 'F';
+}
+.icon-bulk:before {
+    content: 'G';
+}
+.icon-idea:before {
+    content: 'H';
+}
+.icon-spinner:before {
+    content: 'I';
+}
+.icon-minimize:before {
+    content: 'J';
+}
+.icon-maximize:before {
+    content: 'K';
+}
+.icon-stats:before {
+    content: 'L';
+}
+.icon-copy:before {
+    content: 'M';
+}

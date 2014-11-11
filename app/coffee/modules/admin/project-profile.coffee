@@ -57,11 +57,7 @@ class ProjectProfileController extends mixOf(taiga.Controller, taiga.PageMixin)
         promise.then =>
             @appTitle.set("Project profile - " + @scope.sectionName + " - " + @scope.project.name)
 
-        promise.then null, (xhr) =>
-            if xhr and xhr.status == 404
-                @location.path(@navUrls.resolve("not-found"))
-                @location.replace()
-            return @q.reject(xhr)
+        promise.then null, @.onInitialDataError.bind(@)
 
         @scope.$on "project:loaded", =>
             @appTitle.set("Project profile - " + @scope.sectionName + " - " + @scope.project.name)
@@ -96,7 +92,7 @@ module.controller("ProjectProfileController", ProjectProfileController)
 ## Project Profile Directive
 #############################################################################
 
-ProjectProfileDirective = ($rootscope, $log, $repo, $confirm, $loading) ->
+ProjectProfileDirective = ($repo, $confirm, $loading, $navurls, $location) ->
     link = ($scope, $el, $attrs) ->
         form = $el.find("form").checksley({"onlyOneErrorElement": true})
         submit = (target) =>
@@ -108,7 +104,9 @@ ProjectProfileDirective = ($rootscope, $log, $repo, $confirm, $loading) ->
             promise.then ->
                 $loading.finish(target)
                 $confirm.notify("success")
-                $rootscope.$broadcast("project:loaded", $scope.project)
+                newUrl = $navurls.resolve("project-admin-project-profile-details", {project: $scope.project.slug})
+                $location.path(newUrl)
+                $scope.$emit("project:loaded", $scope.project)
 
             promise.then null, (data) ->
                 $loading.finish(target)
@@ -132,14 +130,14 @@ ProjectProfileDirective = ($rootscope, $log, $repo, $confirm, $loading) ->
 
     return {link:link}
 
-module.directive("tgProjectProfile", ["$rootScope", "$log", "$tgRepo", "$tgConfirm", "$tgLoading", ProjectProfileDirective])
+module.directive("tgProjectProfile", ["$tgRepo", "$tgConfirm", "$tgLoading", "$tgNavUrls", "$tgLocation", ProjectProfileDirective])
 
 
 #############################################################################
 ## Project Modules Directive
 #############################################################################
 
-ProjectModulesDirective = ($rootscope, $log, $repo, $confirm, $loading) ->
+ProjectModulesDirective = ($repo, $confirm, $loading) ->
     link = ($scope, $el, $attrs) ->
         form = $el.find("form").checksley()
         submit = =>
@@ -181,4 +179,4 @@ ProjectModulesDirective = ($rootscope, $log, $repo, $confirm, $loading) ->
 
     return {link:link}
 
-module.directive("tgProjectModules", ["$rootScope", "$log", "$tgRepo", "$tgConfirm", "$tgLoading", ProjectModulesDirective])
+module.directive("tgProjectModules", ["$tgRepo", "$tgConfirm", "$tgLoading", ProjectModulesDirective])

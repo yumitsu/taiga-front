@@ -47,15 +47,19 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
         "$appTitle",
         "$tgNavUrls",
         "$tgEvents",
+        "$tgAnalytics",
         "tgLoader"
     ]
 
     constructor: (@scope, @rootscope, @repo, @confirm, @rs, @params, @q,
-                  @location, @appTitle, @navUrls, @events, tgLoader) ->
+                  @location, @appTitle, @navUrls, @events, @analytics, tgLoader) ->
         _.bindAll(@)
 
         @scope.sectionName = "Backlog"
         @showTags = false
+        @activeFilters = false
+
+        @.initializeEventHandlers()
 
         promise = @.loadInitialData()
 
@@ -70,27 +74,36 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
 
             tgLoader.pageLoaded()
 
-            # $(".backlog, .sidebar").mCustomScrollbar({
-            #     theme: 'minimal-dark'
-            #     scrollInertia: 0
-            #     axis: 'y'
-            # })
-
         # On Error
-        promise.then null, (xhr) =>
-            if xhr and xhr.status == 404
-                @location.path(@navUrls.resolve("not-found"))
-                @location.replace()
-            return @q.reject(xhr)
+        promise.then null, @.onInitialDataError.bind(@)
 
-        @scope.$on("usform:bulk:success", @.loadUserstories)
-        @scope.$on("sprintform:create:success", @.loadSprints)
-        @scope.$on("sprintform:create:success", @.loadProjectStats)
-        @scope.$on("sprintform:remove:success", @.loadSprints)
-        @scope.$on("sprintform:remove:success", @.loadProjectStats)
-        @scope.$on("sprintform:remove:success", @.loadUserstories)
-        @scope.$on("usform:new:success", @.loadUserstories)
-        @scope.$on("usform:edit:success", @.loadUserstories)
+    initializeEventHandlers: ->
+        @scope.$on "usform:bulk:success", =>
+            @.loadUserstories()
+            @.loadProjectStats()
+            @analytics.trackEvent("userstory", "create", "bulk create userstory on backlog", 1)
+
+        @scope.$on "sprintform:create:success", =>
+            @.loadSprints()
+            @.loadProjectStats()
+            @analytics.trackEvent("sprint", "create", "create sprint on backlog", 1)
+
+        @scope.$on "usform:new:success", =>
+            @.loadUserstories()
+            @.loadProjectStats()
+            @analytics.trackEvent("userstory", "create", "create userstory on backlog", 1)
+
+        @scope.$on "sprintform:edit:success", =>
+            @.loadProjectStats()
+
+        @scope.$on "sprintform:remove:success", =>
+            @.loadSprints()
+            @.loadProjectStats()
+            @.loadUserstories()
+
+        @scope.$on "usform:edit:success", =>
+            @.loadUserstories()
+
         @scope.$on("sprint:us:move", @.moveUs)
         @scope.$on("sprint:us:moved", @.loadSprints)
         @scope.$on("sprint:us:moved", @.loadProjectStats)
@@ -109,6 +122,9 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
         @scope.$apply =>
             @showTags = !@showTags
             @rs.userstories.storeShowTags(@scope.projectId, @showTags)
+
+    toggleActiveFilters: ->
+        @activeFilters = !@activeFilters
 
     loadProjectStats: ->
         return @rs.projects.stats(@scope.projectId).then (stats) =>
@@ -138,21 +154,20 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
             return sprints
 
     resetFilters: ->
-        @scope.$apply =>
-            selectedTags = _.filter(@scope.filters.tags, "selected")
-            selectedStatuses = _.filter(@scope.filters.statuses, "selected")
+        selectedTags = _.filter(@scope.filters.tags, "selected")
+        selectedStatuses = _.filter(@scope.filters.statuses, "selected")
 
-            @scope.filtersQ = ""
+        @scope.filtersQ = ""
 
-            _.each [selectedTags, selectedStatuses], (filterGrp) =>
-                _.each filterGrp, (item) =>
-                    filters = @scope.filters[item.type]
-                    filter = _.find(filters, {id: taiga.toString(item.id)})
-                    filter.selected = false
+        _.each [selectedTags, selectedStatuses], (filterGrp) =>
+            _.each filterGrp, (item) =>
+                filters = @scope.filters[item.type]
+                filter = _.find(filters, {id: taiga.toString(item.id)})
+                filter.selected = false
 
-                    @.unselectFilter(item.type, item.id)
+                @.unselectFilter(item.type, item.id)
 
-            @.loadUserstories()
+        @.loadUserstories()
 
     loadUserstories: ->
         @scope.httpParams = @.getUrlFilters()
@@ -240,6 +255,7 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
 
     resortUserStories: (uses, field="backlog_order") ->
         items = []
+
         for item, index in uses
             item[field] = index
             if item.isModified()
@@ -247,8 +263,9 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
 
         return items
 
-    moveUs: (ctx, us, newUsIndex, newSprintId) ->
-        oldSprintId = us.milestone
+    moveUs: (ctx, usList, newUsIndex, newSprintId) ->
+        oldSprintId = usList[0].milestone
+        project = usList[0].project
 
         # In the same sprint or in the backlog
         if newSprintId == oldSprintId
@@ -261,20 +278,25 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
                 userstories = @scope.sprintsById[newSprintId].user_stories
 
             @scope.$apply ->
-                r = userstories.indexOf(us)
-                userstories.splice(r, 1)
-                userstories.splice(newUsIndex, 0, us)
+                for us, key in usList
+                    r = userstories.indexOf(us)
+                    userstories.splice(r, 1)
+
+                args = [newUsIndex, 0].concat(usList)
+                Array.prototype.splice.apply(userstories, args)
 
             # If in backlog
             if newSprintId == null
                 # Rehash userstories order field
+
                 items = @.resortUserStories(userstories, "backlog_order")
                 data = @.prepareBulkUpdateData(items, "backlog_order")
 
                 # Persist in bulk all affected
                 # userstories with order change
-                @rs.userstories.bulkUpdateBacklogOrder(us.project, data).then =>
-                    @rootscope.$broadcast("sprint:us:moved", us, oldSprintId, newSprintId)
+                @rs.userstories.bulkUpdateBacklogOrder(project, data).then =>
+                    for us in usList
+                        @rootscope.$broadcast("sprint:us:moved", us, oldSprintId, newSprintId)
 
             # For sprint
             else
@@ -284,27 +306,32 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
 
                 # Persist in bulk all affected
                 # userstories with order change
-                @rs.userstories.bulkUpdateSprintOrder(us.project, data).then =>
-                    @rootscope.$broadcast("sprint:us:moved", us, oldSprintId, newSprintId)
+                @rs.userstories.bulkUpdateSprintOrder(project, data).then =>
+                    for us in usList
+                        @rootscope.$broadcast("sprint:us:moved", us, oldSprintId, newSprintId)
 
             return promise
 
         # From sprint to backlog
         if newSprintId == null
-            us.milestone = null
+            us.milestone = null for us in usList
 
             @scope.$apply =>
                 # Add new us to backlog userstories list
-                @scope.userstories.splice(newUsIndex, 0, us)
-                @scope.visibleUserstories.splice(newUsIndex, 0, us)
+                # @scope.userstories.splice(newUsIndex, 0, us)
+                # @scope.visibleUserstories.splice(newUsIndex, 0, us)
+                args = [newUsIndex, 0].concat(usList)
+                Array.prototype.splice.apply(@scope.userstories, args)
+                Array.prototype.splice.apply(@scope.visibleUserstories, args)
 
                 # Execute the prefiltering of user stories
                 @.filterVisibleUserstories()
 
                 # Remove the us from the sprint list.
                 sprint = @scope.sprintsById[oldSprintId]
-                r = sprint.user_stories.indexOf(us)
-                sprint.user_stories.splice(r, 1)
+                for us, key in usList
+                    r = sprint.user_stories.indexOf(us)
+                    sprint.user_stories.splice(r, 1)
 
             # Persist the milestone change of userstory
             promise = @repo.save(us)
@@ -324,42 +351,54 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
 
         # From backlog to sprint
         newSprint = @scope.sprintsById[newSprintId]
-        if us.milestone == null
-            us.milestone = newSprintId
+        if oldSprintId == null
+            us.milestone = newSprintId for us in usList
 
             @scope.$apply =>
+                args = [newUsIndex, 0].concat(usList)
+
                 # Add moving us to sprint user stories list
-                newSprint.user_stories.splice(newUsIndex, 0, us)
+                Array.prototype.splice.apply(newSprint.user_stories, args)
 
                 # Remove moving us from backlog userstories lists.
-                r = @scope.visibleUserstories.indexOf(us)
-                @scope.visibleUserstories.splice(r, 1)
-                r = @scope.userstories.indexOf(us)
-                @scope.userstories.splice(r, 1)
+                for us, key in usList
+                    r = @scope.visibleUserstories.indexOf(us)
+                    @scope.visibleUserstories.splice(r, 1)
+
+                    r = @scope.userstories.indexOf(us)
+                    @scope.userstories.splice(r, 1)
 
         # From sprint to sprint
         else
-            us.milestone = newSprintId
+            us.milestone = newSprintId for us in usList
 
             @scope.$apply =>
+                args = [newUsIndex, 0].concat(usList)
+
                 # Add new us to backlog userstories list
-                newSprint.user_stories.splice(newUsIndex, 0, us)
+                Array.prototype.splice.apply(newSprint.user_stories, args)
 
                 # Remove the us from the sprint list.
-                oldSprint = @scope.sprintsById[oldSprintId]
-                r = oldSprint.user_stories.indexOf(us)
-                oldSprint.user_stories.splice(r, 1)
+                for us in usList
+                    oldSprint = @scope.sprintsById[oldSprintId]
+                    r = oldSprint.user_stories.indexOf(us)
+                    oldSprint.user_stories.splice(r, 1)
 
         # Persist the milestone change of userstory
-        promise = @repo.save(us)
+        promises = _.map usList, (us) => @repo.save(us)
 
         # Rehash userstories order field
         # and persist in bulk all changes.
-        promise = promise.then =>
+        promise = @q.all.apply(null, promises).then =>
             items = @.resortUserStories(newSprint.user_stories, "sprint_order")
             data = @.prepareBulkUpdateData(items, "sprint_order")
-            return @rs.userstories.bulkUpdateSprintOrder(us.project, data).then =>
+
+            return @rs.userstories.bulkUpdateSprintOrder(project, data).then =>
                 @rootscope.$broadcast("sprint:us:moved", us, oldSprintId, newSprintId)
+
+            return @rs.userstories.bulkUpdateBacklogOrder(project, data).then =>
+                for us in usList
+                    @rootscope.$broadcast("sprint:us:moved", us, oldSprintId, newSprintId)
 
         promise.then null, ->
             console.log "FAIL" # TODO
@@ -391,6 +430,8 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
         @scope.filters = {}
 
         plainTags = _.flatten(_.filter(_.map(@scope.userstories, "tags")))
+        plainTags.sort()
+
         @scope.filters.tags = _.map _.countBy(plainTags), (v, k) =>
             obj = {
                 id: k,
@@ -429,9 +470,9 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
     deleteUserStory: (us) ->
         #TODO: i18n
         title = "Delete User Story"
-        subtitle = us.subject
+        message = us.subject
 
-        @confirm.ask(title, subtitle).then (finish) =>
+        @confirm.askOnDelete(title, message).then (finish) =>
             # We modify the userstories in scope so the user doesn't see the removed US for a while
             @scope.userstories = _.without(@scope.userstories, us)
             @filterVisibleUserstories()
@@ -529,6 +570,7 @@ BacklogDirective = ($repo, $rootscope) ->
 
         # Enable move to current sprint only when there are selected us's
         $el.on "change", ".backlog-table-body .user-stories input:checkbox", (event) ->
+            target = angular.element(event.currentTarget)
             moveToCurrentSprintDom = $el.find("#move-to-current-sprint")
             selectedUsDom = $el.find(".backlog-table-body .user-stories input:checkbox:checked")
 
@@ -536,6 +578,8 @@ BacklogDirective = ($repo, $rootscope) ->
                 moveToCurrentSprintDom.show()
             else
                 moveToCurrentSprintDom.hide()
+
+            target.closest('.us-item-row').toggleClass('ui-multisortable-multiple')
 
         $el.on "click", "#move-to-current-sprint", (event) =>
             # Calculating the us's to be modified
@@ -582,13 +626,16 @@ BacklogDirective = ($repo, $rootscope) ->
         if !sidebar.hasClass("active")
             $ctrl.resetFilters()
 
+        $ctrl.toggleActiveFilters()
+
     ## Filters Link
 
     linkFilters = ($scope, $el, $attrs, $ctrl) ->
         $scope.filtersSearch = {}
         $el.on "click", "#show-filters-button", (event) ->
             event.preventDefault()
-            showHideFilter($scope, $el, $ctrl)
+            $scope.$apply ->
+                showHideFilter($scope, $el, $ctrl)
 
     link = ($scope, $el, $attrs, $rootscope) ->
         $ctrl = $el.controller()
@@ -645,6 +692,7 @@ UsRolePointsSelectorDirective = ($rootscope) ->
                 $el.append(selectionTemplate({"roles":roles}))
             else
                 $el.find(".icon-arrow-bottom").remove()
+                $el.find(".header-points").addClass("not-clickable")
 
         $scope.$on "uspoints:select", (ctx, roleId, roleName) ->
             $el.find(".popover").popover().close()
@@ -728,6 +776,23 @@ UsPointsDirective = ($repo) ->
         if numberOfRoles == 1
             selectedRoleId = _.keys(us.points)[0]
 
+        roles = []
+        updatePointsRoles = ->
+            roles = _.map computableRoles, (role) ->
+                pointId = us.points[role.id]
+                pointObj = $scope.pointsById[pointId]
+
+                role = _.clone(role, true)
+                role.points = if pointObj.value? then pointObj.value else "?"
+                return role
+
+        computableRoles = _.filter($scope.project.roles, "computable")
+        updatePointsRoles()
+
+        if roles.length == 0
+            $el.find(".icon-arrow-bottom").remove()
+            $el.find("a.us-points").addClass("not-clickable")
+
         renderPointsSelector = (us, roleId) ->
             # Prepare data for rendering
             points = _.map $scope.project.points, (point) ->
@@ -751,16 +816,7 @@ UsPointsDirective = ($repo) ->
             $el.find(".pop-points-open").popover().open()
 
         renderRolesSelector = (us) ->
-            # Prepare data for rendering
-            computableRoles = _.filter($scope.project.roles, "computable")
-
-            roles = _.map computableRoles, (role) ->
-                pointId = us.points[role.id]
-                pointObj = $scope.pointsById[pointId]
-
-                role = _.clone(role, true)
-                role.points = if pointObj.value? then pointObj.value else "?"
-                return role
+            updatePointsRoles()
 
             html = rolesTemplate({"roles": roles})
 
@@ -802,56 +858,57 @@ UsPointsDirective = ($repo) ->
             renderPoints(us, null)
             selectedRoleId = null
 
-        $el.on "click", "a.us-points span", (event) ->
-            event.preventDefault()
-            event.stopPropagation()
+        if roles.length > 0
+            $el.on "click", "a.us-points span", (event) ->
+                event.preventDefault()
+                event.stopPropagation()
 
-            us = $scope.$eval($attrs.tgBacklogUsPoints)
-            updatingSelectedRoleId = selectedRoleId
+                us = $scope.$eval($attrs.tgBacklogUsPoints)
+                updatingSelectedRoleId = selectedRoleId
 
-            if selectedRoleId?
-                renderPointsSelector(us, selectedRoleId)
-            else
-                renderRolesSelector(us)
+                if selectedRoleId?
+                    renderPointsSelector(us, selectedRoleId)
+                else
+                    renderRolesSelector(us)
 
-        $el.on "click", ".role", (event) ->
-            event.preventDefault()
-            event.stopPropagation()
-            target = angular.element(event.currentTarget)
+            $el.on "click", ".role", (event) ->
+                event.preventDefault()
+                event.stopPropagation()
+                target = angular.element(event.currentTarget)
 
-            us = $scope.$eval($attrs.tgBacklogUsPoints)
+                us = $scope.$eval($attrs.tgBacklogUsPoints)
 
-            updatingSelectedRoleId = target.data("role-id")
+                updatingSelectedRoleId = target.data("role-id")
 
-            popRolesDom = $el.find(".pop-role")
-            popRolesDom.find("a").removeClass("active")
-            popRolesDom.find("a[data-role-id='#{updatingSelectedRoleId}']").addClass("active")
+                popRolesDom = $el.find(".pop-role")
+                popRolesDom.find("a").removeClass("active")
+                popRolesDom.find("a[data-role-id='#{updatingSelectedRoleId}']").addClass("active")
 
-            renderPointsSelector(us, updatingSelectedRoleId)
+                renderPointsSelector(us, updatingSelectedRoleId)
 
-        $el.on "click", ".point", (event) ->
-            event.preventDefault()
-            event.stopPropagation()
+            $el.on "click", ".point", (event) ->
+                event.preventDefault()
+                event.stopPropagation()
 
-            target = angular.element(event.currentTarget)
-            $el.find(".pop-points-open").hide()
-            $el.find(".pop-role").hide()
+                target = angular.element(event.currentTarget)
+                $el.find(".pop-points-open").hide()
+                $el.find(".pop-role").hide()
 
-            us = $scope.$eval($attrs.tgBacklogUsPoints)
+                us = $scope.$eval($attrs.tgBacklogUsPoints)
 
-            points = _.clone(us.points, true)
-            points[updatingSelectedRoleId] = target.data("point-id")
+                points = _.clone(us.points, true)
+                points[updatingSelectedRoleId] = target.data("point-id")
 
-            $scope.$apply ->
-                us.points = points
-                us.total_points = calculateTotalPoints(us)
+                $scope.$apply ->
+                    us.points = points
+                    us.total_points = calculateTotalPoints(us)
 
-                renderPoints(us, selectedRoleId)
+                    renderPoints(us, selectedRoleId)
 
-                $repo.save(us).then ->
-                    # Little Hack for refresh.
-                    $repo.refresh(us).then ->
-                        $ctrl.loadProjectStats()
+                    $repo.save(us).then ->
+                        # Little Hack for refresh.
+                        $repo.refresh(us).then ->
+                            $ctrl.loadProjectStats()
 
         bindOnce $scope, "project", (project) ->
             # If the user has not enough permissions the click events are unbinded
@@ -968,3 +1025,52 @@ tgBacklogGraphDirective = ->
 
 
 module.directive("tgGmBacklogGraph", tgBacklogGraphDirective)
+
+
+#############################################################################
+## Backlog progress bar directive
+#############################################################################
+
+TgBacklogProgressBarDirective = ->
+    template = _.template("""
+        <div class="defined-points" title="Excess of points"></div>
+        <div class="project-points-progress" title="Pending Points" style="width: <%- projectPointsPercentaje %>%"></div>
+        <div class="closed-points-progress" title="Closed points" style="width: <%- closedPointsPercentaje %>%"></div>
+    """)
+
+    render = (el, projectPointsPercentaje, closedPointsPercentaje) ->
+        el.html(template({
+            projectPointsPercentaje: projectPointsPercentaje,
+            closedPointsPercentaje:closedPointsPercentaje
+        }))
+
+    adjustPercentaje = (percentage) ->
+        adjusted = _.max([0 , percentage])
+        adjusted = _.min([100, adjusted])
+        return Math.round(adjusted)
+
+    link = ($scope, $el, $attrs) ->
+        element = angular.element($el)
+
+        $scope.$watch $attrs.tgBacklogProgressBar, (stats) ->
+            if stats?
+                totalPoints = stats.total_points
+                definedPoints = stats.defined_points
+                closedPoints = stats.closed_points
+                if definedPoints > totalPoints
+                    projectPointsPercentaje = totalPoints * 100 / definedPoints
+                    closedPointsPercentaje = closedPoints * 100 / definedPoints
+                else
+                    projectPointsPercentaje = 100
+                    closedPointsPercentaje = closedPoints * 100 / totalPoints
+
+                projectPointsPercentaje = adjustPercentaje(projectPointsPercentaje - 3)
+                closedPointsPercentaje = adjustPercentaje(closedPointsPercentaje - 3)
+                render($el, projectPointsPercentaje, closedPointsPercentaje)
+
+        $scope.$on "$destroy", ->
+            $el.off()
+
+    return {link: link}
+
+module.directive("tgBacklogProgressBar", TgBacklogProgressBarDirective)

@@ -24,20 +24,26 @@ debounce = @.taiga.debounce
 
 module = angular.module("taigaKanban")
 
-MAX_MEMBERSHIP_FIELDSETS = 6
+MAX_MEMBERSHIP_FIELDSETS = 4
 
 #############################################################################
 ## Create Members Lightbox Directive
 #############################################################################
 
 CreateMembersDirective = ($rs, $rootScope, $confirm, lightboxService) ->
+    extraTextTemplate = """
+    <fieldset class="extra-text">
+        <textarea placeholder="(Optional) Add a personalized text to the invitation. Tell something lovely to your new members ;-)"></textarea>
+    </fieldset>
+    """
+
     template = _.template("""
     <div class="add-member-wrapper">
         <fieldset>
-            <input type="email" placeholder="Type an Email" data-required="true" data-type="email"/>
+            <input type="email" placeholder="Type an Email" <% if(required) { %> data-required="true" <% } %> data-type="email" />
         </fieldset>
         <fieldset>
-            <select data-required="true">
+            <select <% if(required) { %> data-required="true" <% } %> data-required="true">
                 <% _.each(roleList, function(role) { %>
                 <option value="<%- role.id %>"><%- role.name %></option>
                 <% }); %>
@@ -48,16 +54,19 @@ CreateMembersDirective = ($rs, $rootScope, $confirm, lightboxService) ->
     """) # i18n
 
     link = ($scope, $el, $attrs) ->
-        createFieldSet = ->
-            ctx = {roleList: $scope.roles}
+        createFieldSet = (required = true)->
+            ctx = {roleList: $scope.roles, required: required}
             return template(ctx)
 
         resetForm = ->
-            $el.find("form > .add-member-wrapper").remove()
+            $el.find("form textarea").remove("")
+            $el.find("form .add-member-wrapper").remove()
 
-            title = $el.find("h2")
+            invitations = $el.find(".add-member-forms")
+            invitations.html(extraTextTemplate)
+
             fieldSet = createFieldSet()
-            title.after(fieldSet)
+            invitations.prepend(fieldSet)
 
         $scope.$on "membersform:new",  ->
             resetForm()
@@ -86,11 +95,12 @@ CreateMembersDirective = ($rs, $rootScope, $confirm, lightboxService) ->
             target.removeClass("icon-plus add-fieldset")
                   .addClass("icon-delete delete-fieldset")
 
-            newFieldSet = createFieldSet()
+            newFieldSet = createFieldSet(false)
+
             fieldSet.after(newFieldSet)
 
-            if $el.find("fieldset").length == MAX_MEMBERSHIP_FIELDSETS
-                $el.find("fieldset:last > a").removeClass("icon-plus add-fieldset")
+            if $el.find(".add-member-wrapper").length == MAX_MEMBERSHIP_FIELDSETS
+                $el.find(".add-member-wrapper fieldset:last > a").removeClass("icon-plus add-fieldset")
                                              .addClass("icon-delete delete-fieldset")
 
         $el.on "click", ".button-green", debounce 2000, (event) ->
@@ -107,19 +117,31 @@ CreateMembersDirective = ($rs, $rootScope, $confirm, lightboxService) ->
                 $rootScope.$broadcast("membersform:new:error")
 
             form = $el.find("form").checksley()
+
+            #checksley find new fields
+            form.destroy()
+            form.initialize()
             if not form.validate()
                 return
 
-            memberWrappers = $el.find("form > .add-member-wrapper")
+            memberWrappers = $el.find("form .add-member-wrapper")
+            memberWrappers = _.filter memberWrappers, (mw) ->
+                angular.element(mw).find("input").hasClass('checksley-ok')
 
             invitations = _.map memberWrappers, (mw) ->
                 memberWrapper = angular.element(mw)
+                email =  memberWrapper.find("input")
+                role = memberWrapper.find("select")
+
                 return {
-                    email: memberWrapper.find("input").val()
-                    role_id: memberWrapper.find("select").val()
+                    email: email.val()
+                    role_id: role.val()
                 }
 
-            $rs.memberships.bulkCreateMemberships($scope.project.id, invitations).then(onSuccess, onError)
+            if invitations.length
+                invitation_extra_text = $el.find("form textarea").val()
+
+                $rs.memberships.bulkCreateMemberships($scope.project.id, invitations, invitation_extra_text).then(onSuccess, onError)
 
     return {link: link}
 

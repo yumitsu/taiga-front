@@ -60,15 +60,16 @@ class KanbanController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.Fi
         "$appTitle",
         "$tgNavUrls",
         "$tgEvents",
+        "$tgAnalytics",
         "tgLoader"
     ]
 
     constructor: (@scope, @rootscope, @repo, @confirm, @rs, @params, @q, @location,
-                  @appTitle, @navUrls, @events, tgLoader) ->
+                  @appTitle, @navUrls, @events, @analytics, tgLoader) ->
         _.bindAll(@)
         @scope.sectionName = "Kanban"
         @scope.statusViewModes = {}
-
+        @.initializeEventHandlers()
         promise = @.loadInitialData()
 
         # On Success
@@ -77,14 +78,17 @@ class KanbanController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.Fi
             tgLoader.pageLoaded()
 
         # On Error
-        promise.then null, (xhr) =>
-            if xhr and xhr.status == 404
-                @location.path(@navUrls.resolve("not-found"))
-                @location.replace()
-            return @q.reject(xhr)
+        promise.then null, @.onInitialDataError.bind(@)
 
-        @scope.$on("usform:new:success", @.loadUserstories)
-        @scope.$on("usform:bulk:success", @.loadUserstories)
+    initializeEventHandlers: ->
+        @scope.$on "usform:new:success", =>
+            @.loadUserstories()
+            @analytics.trackEvent("userstory", "create", "create userstory on kanban", 1)
+
+        @scope.$on "usform:bulk:success", =>
+            @.loadUserstories()
+            @analytics.trackEvent("userstory", "create", "bulk create userstory on kanban", 1)
+
         @scope.$on("usform:edit:success", @.loadUserstories)
         @scope.$on("assigned-to:added", @.onAssignedToChanged)
         @scope.$on("kanban:us:move", @.moveUs)
@@ -308,6 +312,9 @@ KanbanColumnHeightFixerDirective = ->
     link = ($scope, $el, $attrs) ->
         timeout(500, -> renderSize($el))
 
+        $scope.$on "resize", ->
+            renderSize($el)
+
         $scope.$on "$destroy", ->
             $el.off()
 
@@ -385,7 +392,7 @@ KanbanUserDirective = ($log) ->
     template = _.template("""
     <figure class="avatar">
         <a href="#" title="Assign User Story" <% if (!clickable) {%>class="not-clickable"<% } %>>
-            <img src="<%= imgurl %>" alt="<%- name %>" class="avatar">
+            <img src="<%- imgurl %>" alt="<%- name %>" class="avatar">
         </a>
     </figure>
     """) # TODO: i18n
