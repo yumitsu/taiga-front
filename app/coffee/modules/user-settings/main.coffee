@@ -23,7 +23,7 @@ taiga = @.taiga
 mixOf = @.taiga.mixOf
 sizeFormat = @.taiga.sizeFormat
 module = angular.module("taigaUserSettings")
-
+debounce = @.taiga.debounce
 
 #############################################################################
 ## User settings Controller
@@ -82,7 +82,9 @@ module.controller("UserSettingsController", UserSettingsController)
 
 UserProfileDirective = ($confirm, $auth, $repo) ->
     link = ($scope, $el, $attrs) ->
-        $el.on "click", ".user-profile form .save-profile", (event) ->
+        submit = debounce 2000, (event) =>
+            event.preventDefault()
+
             form = $el.find("form").checksley()
             return if not form.validate()
 
@@ -102,6 +104,8 @@ UserProfileDirective = ($confirm, $auth, $repo) ->
                 $confirm.notify('error', data._error_message)
 
             $repo.save($scope.user).then(onSuccess, onError)
+
+        $el.on "submit", "form", submit
 
         $scope.$on "$destroy", ->
             $el.off()
@@ -125,12 +129,12 @@ UserAvatarDirective = ($auth, $model, $rs, $confirm) ->
             $auth.setUser(user)
             $scope.user = user
 
-            $el.find('.overlay').hide()
+            $el.find('.overlay').addClass('hidden')
             $confirm.notify('success')
 
         onError = (response) ->
             showSizeInfo() if response.status == 413
-            $el.find('.overlay').hide()
+            $el.find('.overlay').addClass('hidden')
             $confirm.notify('error', response.data._error_message)
 
         # Change photo
@@ -139,12 +143,12 @@ UserAvatarDirective = ($auth, $model, $rs, $confirm) ->
 
         $el.on "change", "#avatar-field", (event) ->
             if $scope.avatarAttachment
-                $el.find('.overlay').show()
+                $el.find('.overlay').removeClass('hidden')
                 $rs.userSettings.changeAvatar($scope.avatarAttachment).then(onSuccess, onError)
 
         # Use gravatar photo
         $el.on "click", "a.use-gravatar", (event) ->
-            $el.find('.overlay').show()
+            $el.find('.overlay').removeClass('hidden')
             $rs.userSettings.removeAvatar().then(onSuccess, onError)
 
         $scope.$on "$destroy", ->

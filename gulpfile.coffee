@@ -9,6 +9,7 @@ wrap = require("gulp-wrap")
 rename = require("gulp-rename")
 flatten = require('gulp-flatten')
 gulpif = require('gulp-if')
+replace = require("gulp-replace")
 
 minifyHTML = require("gulp-minify-html")
 sass = require("gulp-ruby-sass")
@@ -24,7 +25,10 @@ sourcemaps = require('gulp-sourcemaps')
 insert = require("gulp-insert")
 runSequence = require('run-sequence')
 lazypipe = require('lazypipe')
-rimraf = require('rimraf')
+del = require('del')
+imagemin = require('gulp-imagemin')
+autoprefixer = require('gulp-autoprefixer')
+templateCache = require('gulp-angular-templatecache')
 
 mainSass = require("./main-sass").files
 
@@ -36,10 +40,12 @@ paths.tmpStyles = paths.tmp + "styles/"
 paths.tmpStylesExtras = "#{paths.tmpStyles}/taiga-front-extras/**/*.css"
 paths.extras = "extras/"
 
-paths.jade = [
-    paths.app + "index.jade",
-    paths.app + "partials/**/*.jade",
-    paths.app + "plugins/**/*.jade"
+paths.jade = "#{paths.app}/**/*.jade"
+
+paths.htmlPartials = [
+    "#{paths.tmp}/partials/**/*.html",
+    "#{paths.tmp}/plugins/**/*.html",
+    "!#{paths.tmp}/partials/{includes,includes/**}"
 ]
 
 paths.images = paths.app + "images/**/*"
@@ -66,6 +72,7 @@ paths.coffee = [
     paths.app + "coffee/modules/issues/*.coffee",
     paths.app + "coffee/modules/userstories/*.coffee",
     paths.app + "coffee/modules/tasks/*.coffee",
+    paths.app + "coffee/modules/team/*.coffee",
     paths.app + "coffee/modules/wiki/*.coffee",
     paths.app + "coffee/modules/admin/*.coffee",
     paths.app + "coffee/modules/projects/*.coffee",
@@ -73,6 +80,7 @@ paths.coffee = [
     paths.app + "coffee/modules/base/*.coffee",
     paths.app + "coffee/modules/resources/*.coffee",
     paths.app + "coffee/modules/user-settings/*.coffee"
+    paths.app + "coffee/modules/integrations/*.coffee"
     paths.app + "plugins/**/*.coffee"
 ]
 
@@ -92,12 +100,13 @@ paths.js = [
     paths.app + "vendor/jquery-flot/jquery.flot.js",
     paths.app + "vendor/jquery-flot/jquery.flot.pie.js",
     paths.app + "vendor/jquery-flot/jquery.flot.time.js",
-    paths.app + "vendor/jquery-flot/jquery.flot.time.js",
     paths.app + "vendor/flot-axislabels/jquery.flot.axislabels.js",
+    paths.app + "vendor/flot.tooltip/js/jquery.flot.tooltip.js",
     paths.app + "vendor/jquery-textcomplete/jquery.textcomplete.js",
-    paths.app + "vendor/markitup/markitup/jquery.markitup.js",
+    paths.app + "vendor/markitup-1x/markitup/jquery.markitup.js",
     paths.app + "vendor/malihu-custom-scrollbar-plugin/jquery.mCustomScrollbar.concat.min.js",
     paths.app + "vendor/raven-js/dist/raven.js",
+    paths.app + "vendor/l.js/l.js",
     paths.app + "js/jquery.ui.git-custom.js",
     paths.app + "js/jquery-ui.drag-multiple-custom.js",
     paths.app + "js/sha1-custom.js",
@@ -110,33 +119,42 @@ isDeploy = process.argv[process.argv.length - 1] == 'deploy'
 # Layout/CSS Related tasks
 ##############################################################################
 
-gulp.task "jade-deploy", ->
+gulp.task "jade", ->
     gulp.src(paths.jade)
         .pipe(plumber())
         .pipe(cache("jade"))
-        .pipe(jade({pretty: false}))
-        .pipe(gulp.dest(paths.dist + "partials/"))
-
-gulp.task "jade-watch", ->
-    gulp.src(paths.jade)
-        .pipe(plumber())
-        .pipe(cache("jade"))
-        .pipe(jadeInheritance({basedir: "./app"}))
-        .pipe(jade({pretty: true}))
-        .pipe(gulp.dest(paths.dist))
-
-gulp.task "templates", ->
-    gulp.src(paths.app + "index.jade")
-        .pipe(plumber())
         .pipe(jade({pretty: true, locals:{v:(new Date()).getTime()}}))
+        .pipe(gulp.dest(paths.tmp))
+
+gulp.task "jade-inheritance", ->
+    gulp.src(paths.jade)
+        .pipe(plumber())
+        .pipe(cache("jade"))
+        .pipe(jadeInheritance({basedir: "./app/"}))
+        .pipe(jade({pretty: true, locals:{v:(new Date()).getTime()}}))
+        .pipe(gulp.dest(paths.tmp))
+
+gulp.task "copy-index", ->
+    gulp.src(paths.tmp + "index.html")
         .pipe(gulp.dest(paths.dist))
+
+gulp.task "template-cache", ->
+    gulp.src(paths.htmlPartials)
+        .pipe(templateCache({standalone: true}))
+        .pipe(gulp.dest(paths.dist + "js/"))
+
+gulp.task "jade-deploy", (cb) ->
+    runSequence("jade", "copy-index", "template-cache", cb)
+
+gulp.task "jade-watch", (cb) ->
+    runSequence("jade-inheritance", "copy-index", "template-cache", cb)
 
 ##############################################################################
 # CSS Related tasks
 ##############################################################################
 
 gulp.task "sass-lint", ->
-    gulp.src(paths.sass)
+    gulp.src(paths.sass.concat("!#{paths.app}/styles/shame/**/*.scss"))
         .pipe(cache("sasslint"))
         .pipe(gulpif(!isDeploy, scsslint({config: "scsslint.yml"})))
 
@@ -154,8 +172,8 @@ gulp.task "sass-compile", ["sass-lint"], ->
         .pipe(gulp.dest(paths.tmpStyles))
 
 csslintChannel = lazypipe()
-  .pipe(csslint, "csslintrc.json")
-  .pipe(csslint.reporter)
+    .pipe(csslint, "csslintrc.json")
+    .pipe(csslint.reporter)
 
 gulp.task "css-lint-app", ->
     gulp.src(mainSass.concat([paths.tmpStylesExtras]))
@@ -165,6 +183,9 @@ gulp.task "css-lint-app", ->
 gulp.task "css-join", ["css-lint-app"], ->
     gulp.src(mainSass.concat([paths.tmpStylesExtras]))
         .pipe(concat("app.css"))
+        .pipe(autoprefixer({
+            cascade: false
+        }))
         .pipe(gulp.dest(paths.tmp))
 
 gulp.task "css-app", (cb) ->
@@ -175,10 +196,8 @@ gulp.task "css-vendor", ->
         .pipe(concat("vendor.css"))
         .pipe(gulp.dest(paths.tmp))
 
-gulp.task "delete-tmp-styles", (cb) ->
-    rimraf(paths.tmpStyles, cb)
 
-gulp.task "styles-watch", ["css-app", "css-vendor"], ->
+gulp.task "styles", ["css-app", "css-vendor"], ->
     _paths = [
         paths.tmp + "vendor.css",
         paths.tmp + "app.css"
@@ -189,22 +208,23 @@ gulp.task "styles-watch", ["css-app", "css-vendor"], ->
         .pipe(gulpif(isDeploy, minifyCSS({noAdvanced: true})))
         .pipe(gulp.dest(paths.dist + "styles/"))
 
-gulp.task "styles", ["delete-tmp-styles"], ->
-    gulp.start("styles-watch")
-
 ##############################################################################
 # JS Related tasks
 ##############################################################################
 
 gulp.task "conf", ->
-    gulp.src("conf/main.json")
-        .pipe(wrap("angular.module('taigaBase').value('localconf', <%= contents %>);"))
-        .pipe(concat("conf.js"))
-        .pipe(gulp.dest(paths.tmp))
+    gulp.src(["conf/conf.example.json"])
+        .pipe(gulp.dest(paths.dist + "js/"))
+
+gulp.task "app-loader", ->
+    gulp.src("app-loader/app-loader.coffee")
+        .pipe(replace("___VERSION___", (new Date()).getTime()))
+        .pipe(coffee())
+        .pipe(gulp.dest(paths.dist + "js/"))
 
 gulp.task "locales", ->
     gulp.src("app/locales/en/app.json")
-        .pipe(wrap("angular.module('taigaBase').value('localesEn', <%= contents %>);"))
+        .pipe(wrap("angular.module('taigaBase').value('localesEn', <%= contents %>);", {}, {parse: false}))
         .pipe(rename("locales.en.js"))
         .pipe(gulp.dest(paths.tmp))
 
@@ -219,7 +239,7 @@ gulp.task "jslibs-watch", ->
     gulp.src(paths.js)
         .pipe(plumber())
         .pipe(concat("libs.js"))
-        .pipe(gulp.dest("dist/js/"))
+        .pipe(gulp.dest(paths.dist + "js/"))
 
 gulp.task "jslibs-deploy", ->
     gulp.src(paths.js)
@@ -228,12 +248,11 @@ gulp.task "jslibs-deploy", ->
         .pipe(concat("libs.js"))
         .pipe(uglify({mangle:false, preserveComments: false}))
         .pipe(sourcemaps.write('./'))
-        .pipe(gulp.dest("dist/js/"))
+        .pipe(gulp.dest(paths.dist + "js/"))
 
-gulp.task "app-watch", ["coffee", "conf", "locales"], ->
+gulp.task "app-watch", ["coffee", "conf", "locales", "app-loader"], ->
     _paths = [
         paths.tmp + "app.js",
-        paths.tmp + "conf.js",
         paths.tmp + "locales.en.js"
     ]
 
@@ -241,10 +260,9 @@ gulp.task "app-watch", ["coffee", "conf", "locales"], ->
         .pipe(concat("app.js"))
         .pipe(gulp.dest(paths.dist + "js/"))
 
-gulp.task "app-deploy", ["coffee", "conf", "locales"], ->
+gulp.task "app-deploy", ["coffee", "conf", "locales", "app-loader"], ->
     _paths = [
         paths.tmp + "app.js",
-        paths.tmp + "conf.js",
         paths.tmp + "locales.en.js"
     ]
 
@@ -270,6 +288,7 @@ gulp.task "copy-fonts",  ->
 
 gulp.task "copy-images",  ->
     gulp.src("#{paths.app}/images/**/*")
+        .pipe(imagemin({progressive: true}))
         .pipe(gulp.dest("#{paths.dist}/images/"))
 
     gulp.src("#{paths.app}/plugins/**/images/*")
@@ -277,7 +296,7 @@ gulp.task "copy-images",  ->
         .pipe(gulp.dest("#{paths.dist}/images/"))
 
 gulp.task "copy-plugin-templates",  ->
-    gulp.src("#{paths.app}/plugins/**/templates/*")
+    gulp.src("#{paths.app}/plugins/**/templates/**/*.html")
         .pipe(gulp.dest("#{paths.dist}/plugins/"))
 
 gulp.task "copy-extras", ->
@@ -308,8 +327,7 @@ gulp.task "express", ->
 # Rerun the task when a file changes
 gulp.task "watch", ->
     gulp.watch(paths.jade, ["jade-watch"])
-    gulp.watch(paths.app + "index.jade", ["templates"])
-    gulp.watch(paths.sass, ["styles-watch"])
+    gulp.watch(paths.sass, ["styles"])
     gulp.watch(paths.svg, ["copy-svg"])
     gulp.watch(paths.coffee, ["app-watch"])
     gulp.watch(paths.js, ["jslibs-watch"])
@@ -317,10 +335,10 @@ gulp.task "watch", ->
     gulp.watch(paths.images, ["copy-images"])
     gulp.watch(paths.fonts, ["copy-fonts"])
 
+# Remove the tmp directory
+del.sync(paths.tmp)
 
 gulp.task "deploy", [
-    "delete-tmp-styles",
-    "templates",
     "copy",
     "jade-deploy",
     "app-deploy",
@@ -330,9 +348,7 @@ gulp.task "deploy", [
 
 # The default task (called when you run gulp from cli)
 gulp.task "default", [
-    "delete-tmp-styles",
     "copy",
-    "templates",
     "styles",
     "app-watch",
     "jslibs-watch",

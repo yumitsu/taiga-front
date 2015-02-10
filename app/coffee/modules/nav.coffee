@@ -71,42 +71,9 @@ class ProjectsNavigationController extends taiga.Controller
 module.controller("ProjectsNavigationController", ProjectsNavigationController)
 
 
-ProjectsNavigationDirective = ($rootscope, animationFrame, $timeout, tgLoader, $location) ->
-    baseTemplate = _.template("""
-    <h1>Your projects</h1>
-    <form>
-        <fieldset>
-            <input type="text" placeholder="Search in..." class="search-project"/>
-            <a class="icon icon-search"></a>
-        </fieldset>
-    </form>
-
-    <div class="create-project-button">
-        <a class="button button-green" href="">
-            Create project
-        </a>
-    </div>
-
-    <div class="projects-pagination">
-        <a class="v-pagination-previous icon icon-arrow-up " href=""></a>
-        <div class="v-pagination-list">
-            <ul class="projects-list">
-            </ul>
-        </div>
-        <a class="v-pagination-next icon icon-arrow-bottom" href=""></a>
-    </div>
-    """) # TODO: i18n
-
-    projectsTemplate = _.template("""
-    <% _.each(projects, function(project) { %>
-    <li>
-        <a href="<%- project.url %>">
-            <span class="project-name"><%- project.name %></span>
-            <span class="icon icon-arrow-right"/>
-        </a>
-    </li>
-    <% }) %>
-    """) # TODO: i18n
+ProjectsNavigationDirective = ($rootscope, animationFrame, $timeout, tgLoader, $location, $compile, $template) ->
+    baseTemplate = $template.get("project/project-navigation-base.html", true)
+    projectsTemplate = $template.get("project/project-navigation-list.html", true)
 
     overlay = $(".projects-nav-overlay")
     loadingStart = 0
@@ -121,25 +88,30 @@ ProjectsNavigationDirective = ($rootscope, animationFrame, $timeout, tgLoader, $
 
             timeout timeoutValue, ->
                 overlay.one 'transitionend', () ->
-                    $(document.body).removeClass("loading-project open-projects-nav closed-projects-nav")
+                    $(document.body)
+                        .removeClass("loading-project open-projects-nav closed-projects-nav")
+                        .css("overflow-x", "visible")
+
                     overlay.hide()
 
                 $(document.body).addClass("closed-projects-nav")
 
                 tgLoader.disablePreventLoading()
 
-    renderProjects  = ($el, projects) ->
-        html = projectsTemplate({projects: projects})
-        $el.find(".projects-list").html(html)
-
-    render = ($el, projects) ->
-        html = baseTemplate()
-        $el.html(html)
-        renderProjects($el, projects)
 
     link = ($scope, $el, $attrs, $ctrls) ->
         $ctrl = $ctrls[0]
         $rootscope.$on("project:loaded", hideMenu)
+
+        renderProjects  = (projects) ->
+            html = projectsTemplate({projects: projects})
+            $el.find(".projects-list").html(html)
+
+            $scope.$emit("regenerate:project-pagination")
+
+        render = (projects) ->
+            $el.html($compile(baseTemplate())($scope))
+            renderProjects(projects)
 
         overlay.on 'click', () ->
             hideMenu()
@@ -151,11 +123,12 @@ ProjectsNavigationDirective = ($rootscope, animationFrame, $timeout, tgLoader, $
 
         $scope.$on "nav:projects-list:open", ->
             if !$(document.body).hasClass("open-projects-nav")
-                animationFrame.add () ->
-                    overlay.show()
+                animationFrame.add () => overlay.show()
 
-            animationFrame.add () ->
-                $(document.body).toggleClass("open-projects-nav")
+            animationFrame.add(
+                () => $(document.body).css("overflow-x", "hidden")
+                () => $(document.body).toggleClass("open-projects-nav")
+            )
 
         $el.on "click", ".projects-list > li > a", (event) ->
             # HACK: to solve a problem with the loader when the next url
@@ -174,7 +147,7 @@ ProjectsNavigationDirective = ($rootscope, animationFrame, $timeout, tgLoader, $
 
             loadingStart = new Date().getTime()
 
-        $el.on "click", ".create-project-button .button", (event) ->
+        $el.on "click", ".create-project-button", (event) ->
             event.preventDefault()
             $ctrl.newProject()
 
@@ -183,11 +156,10 @@ ProjectsNavigationDirective = ($rootscope, animationFrame, $timeout, tgLoader, $
             $ctrl.filterProjects(target.val())
 
         $scope.$on "projects:filtered", ->
-            renderProjects($el, $scope.filteredProjects)
-            $el.trigger("regenerate:pagination")
+            renderProjects($scope.filteredProjects)
 
         $scope.$watch "projects", (projects) ->
-            render($el, projects) if projects?
+            render(projects) if projects?
 
     return {
         require: ["tgProjectsNav"]
@@ -196,117 +168,24 @@ ProjectsNavigationDirective = ($rootscope, animationFrame, $timeout, tgLoader, $
     }
 
 
-module.directive("tgProjectsNav", ["$rootScope", "animationFrame", "$timeout", "tgLoader", "$tgLocation",
-                                   ProjectsNavigationDirective])
+module.directive("tgProjectsNav", ["$rootScope", "animationFrame", "$timeout", "tgLoader", "$tgLocation", "$compile",
+                                   "$tgTemplate", ProjectsNavigationDirective])
 
 
 #############################################################################
 ## Project
 #############################################################################
 
-ProjectMenuDirective = ($log, $compile, $auth, $rootscope, $tgAuth, $location, $navUrls, $config) ->
-    menuEntriesTemplate = _.template("""
-    <div class="menu-container">
-        <ul class="main-nav">
-        <li id="nav-search">
-            <a href="" title="Search">
-                <span class="icon icon-search"></span><span class="item">Search</span>
-            </a>
-        </li>
-        <% if (project.is_backlog_activated && project.my_permissions.indexOf("view_us") != -1) { %>
-        <li id="nav-backlog">
-            <a href="" title="Backlog" tg-nav="project-backlog:project=project.slug">
-                <span class="icon icon-backlog"></span>
-                <span class="item">Backlog</span>
-            </a>
-        </li>
-        <% } %>
-        <% if (project.is_kanban_activated && project.my_permissions.indexOf("view_us") != -1) { %>
-        <li id="nav-kanban">
-            <a href="" title="Kanban" tg-nav="project-kanban:project=project.slug">
-                <span class="icon icon-kanban"></span><span class="item">Kanban</span>
-            </a>
-        </li>
-        <% } %>
-        <% if (project.is_issues_activated && project.my_permissions.indexOf("view_issues") != -1) { %>
-        <li id="nav-issues">
-            <a href="" title="Issues" tg-nav="project-issues:project=project.slug">
-                <span class="icon icon-issues"></span><span class="item">Issues</span>
-            </a>
-        </li>
-        <% } %>
-        <% if (project.is_wiki_activated && project.my_permissions.indexOf("view_wiki_pages") != -1) { %>
-        <li id="nav-wiki">
-            <a href="" title="Wiki" tg-nav="project-wiki:project=project.slug">
-                <span class="icon icon-wiki"></span>
-                <span class="item">Wiki</span>
-            </a>
-        </li>
-        <% } %>
-        <% if (project.videoconferences) { %>
-        <li id="nav-video">
-            <a href="<%- project.videoconferenceUrl %>" target="_blank" title="Meet Up">
-                <span class="icon icon-video"></span>
-                <span class="item">Meet Up</span>
-            </a>
-        </li>
-        <% } %>
-        <% if (project.i_am_owner) { %>
-        <li id="nav-admin">
-            <a href="" tg-nav="project-admin-home:project=project.slug" title="Admin">
-                <span class="icon icon-settings"></span>
-                <span class="item">Admin</span>
-            </a>
-        </li>
-        <% } %>
-        </ul>
-        <div class="user">
-            <div class="user-settings">
-                <ul class="popover">
-                    <li><a href="" title="User Profile", tg-nav="user-settings-user-profile:project=project.slug">User Profile</a></li>
-                    <li><a href="" title="Change Password", tg-nav="user-settings-user-change-password:project=project.slug">Change Password</a></li>
-                    <li><a href="" title="Notifications", tg-nav="user-settings-mail-notifications:project=project.slug">Notifications</a></li>
-                    <% if (feedbackEnabled) { %>
-                    <li><a href="" class="feedback" title="Feedback"">Feedback</a></li>
-                    <% } %>
-                    <li><a href="" title="Logout" class="logout">Logout</a></li>
-                </ul>
-                <a href="" title="User preferences" class="avatar" id="nav-user-settings">
-                    <img src="<%- user.photo %>" alt="<%- user.full_name_display %>" />
-                </a>
-            </div>
-        </div>
-    </div>
-    """)
+ProjectMenuDirective = ($log, $compile, $auth, $rootscope, $tgAuth, $location, $navUrls, $config, $template) ->
+    menuEntriesTemplate = $template.get("project/project-menu.html", true)
 
     mainTemplate = _.template("""
     <div class="logo-container logo">
         <svg xmlns:svg="http://www.w3.org/2000/svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 134.2 134.3" version="1.1" preserveAspectRatio="xMidYMid meet">
             <style>
-                .top {
-                    -webkit-transform-origin: 50% 50%;
-                    transform: rotate(0deg);
-                }
-                path{
-                    fill:#fff;
-                    opacity: .6;
-                }
-                svg:hover .top {
-                    transform: rotate(90deg);
-                    transition: all .3s ease-in;
-                }
-                svg:hover {
-                    cursor: pointer;
-                }
-                @-webkit-keyframes rotate {
-                    50% {
-                        -webkit-transform: rotate(360deg);
-                    }
-                }
-                @keyframes rotate {
-                    50% {
-                        transform: rotate(360deg);
-                    }
+                path {
+                    fill:#f5f5f5;
+                    opacity:0.7;
                 }
             </style>
             <g transform="translate(-307.87667,-465.22863)">
@@ -321,14 +200,30 @@ ProjectMenuDirective = ($log, $compile, $auth, $rootscope, $tgAuth, $location, $
                     <path transform="matrix(-0.79954125,0.60061118,-0.79954125,-0.60061118,0,0)" d="m166.6-719.6 42 0 0 42-42 0z" />
                     <path transform="matrix(0.60061118,0.79954125,-0.60061118,0.79954125,0,0)" d="m603.1-21.3 42 0 0 42-42 0z" />
                     <path transform="matrix(0.79954125,-0.60061118,0.79954125,0.60061118,0,0)" d="m-250.7 635.8 42 0 0 42-42 0z" />
+                    <path transform="matrix(0.70710678,0.70710678,-0.70710678,0.70710678,0,0)" d="m630.3 100 22.6 0 0 22.6-22.6 0z" />
                 </g>
-                <path class="center" transform="matrix(0.70710678,0.70710678,-0.70710678,0.70710678,0,0)" d="m630.3 100 22.6 0 0 22.6-22.6 0z" />
             </g>
         </svg>
         <span class="item">taiga<sup>[beta]</sup></span>
     </div>
     <div class="menu-container"></div>
     """)
+
+    # If the last page was kanban or backlog and
+    # the new one is the task detail or the us details
+    # this method preserve the last section name.
+    getSectionName = ($el, sectionName, project) ->
+        oldSectionName = $el.find("a.active").parent().attr("id")?.replace("nav-", "")
+
+        if  sectionName  == "backlog-kanban"
+            if oldSectionName in ["backlog", "kanban"]
+                sectionName = oldSectionName
+            else if project.is_backlog_activated && !project.is_kanban_activated
+                sectionName = "backlog"
+            else if !project.is_backlog_activated && project.is_kanban_activated
+                sectionName = "kanban"
+
+        return sectionName
 
     renderMainMenu = ($el) ->
         html = mainTemplate({})
@@ -339,7 +234,7 @@ ProjectMenuDirective = ($log, $compile, $auth, $rootscope, $tgAuth, $location, $
     # content loaded signal is raised using inner scope.
     renderMenuEntries = ($el, targetScope, project={}) ->
         container = $el.find(".menu-container")
-        sectionName = targetScope.section
+        sectionName = getSectionName($el, targetScope.section, project)
 
         ctx = {
             user: $auth.getUser(),
@@ -411,4 +306,4 @@ ProjectMenuDirective = ($log, $compile, $auth, $rootscope, $tgAuth, $location, $
     return {link: link}
 
 module.directive("tgProjectMenu", ["$log", "$compile", "$tgAuth", "$rootScope", "$tgAuth", "$tgLocation",
-                                   "$tgNavUrls", "$tgConfig", ProjectMenuDirective])
+                                   "$tgNavUrls", "$tgConfig", "$tgTemplate", ProjectMenuDirective])

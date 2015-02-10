@@ -1,14 +1,18 @@
 .invitation-main {
-    @include table-flex(center, center, flex, row, wrap, center);
     @extend %background-taiga;
+    align-content: center;
+    align-items: center;
     bottom: 0;
+    display: flex;
+    justify-content: center;
     left: 0;
     position: fixed;
     right: 0;
     top: 0;
     z-index: 999;
     .invitation-container {
-        @include table-flex-child(0, 650px, 0, 650px);
+        flex-basis: 650px;
+        width: 650px;
     }
     .logo {
         margin: 1rem auto;
@@ -43,11 +47,13 @@
         }
     }
     .invitation-form {
-        @include table-flex();
+        display: flex;
+        fieldset {
+            margin-bottom: .5rem;
+        }
         input {
             background: $white;
             color: $gray;
-            margin-bottom: 1rem;
             position: relative;
             @include placeholder {
                 color: $gray-light;
@@ -55,21 +61,21 @@
         }
         input:focus {
             +.forgot-pass {
-                @include transition(opacity .5s linear);
                 opacity: 0;
+                transition: opacity .5s linear;
             }
         }
         .forgot-pass {
-            @include transition(all .3s linear);
             @extend %small;
             color: $gray-light;
             opacity: 1;
             position: absolute;
             right: 1rem;
             top: .5rem;
+            transition: all .3s linear;
             &:hover {
-                @include transition(color .3s linear);
                 color: $grayer;
+                transition: color .3s linear;
             }
         }
         .button {
@@ -80,14 +86,28 @@
                 background: $fresh-taiga;
             }
         }
+        .button-github {
+            &:hover {
+                background: $black;
+            }
+        }
     }
     .login-form,
     .register-form {
-        @include table-flex-child(1, 200px, 0, 200px);
+        flex-basis: 200px;
+        flex-grow: 1;
         padding: 1rem;
-
+        text-align: center;
+        width: 200px;
         .form-header {
             color: #999;
+        }
+    }
+    .register-form {
+        fieldset {
+            &:last-child {
+                margin-bottom: 1rem;
+            }
         }
     }
     .register-text {

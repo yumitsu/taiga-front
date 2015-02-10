@@ -31,6 +31,9 @@ class RepositoryService extends taiga.Service
         idAttrName = model.getIdAttrName()
         return "#{@urls.resolve(model.getName())}/#{model[idAttrName]}"
 
+    resolveUrlForAttributeModel: (model) ->
+        return @urls.resolve(model.getName(), model.parent)
+
     create: (name, data, dataTypes={}, extraParams={}) ->
         defered = @q.defer()
         url = @urls.resolve(name)
@@ -59,7 +62,7 @@ class RepositoryService extends taiga.Service
 
     saveAll: (models, patch=true) ->
         promises = _.map(models, (x) => @.save(x, true))
-        return @q.all.apply(@q, promises)
+        return @q.all(promises)
 
     save: (model, patch=true) ->
         defered = @q.defer()
@@ -70,6 +73,37 @@ class RepositoryService extends taiga.Service
 
         url = @.resolveUrlForModel(model)
         data = JSON.stringify(model.getAttrs(patch))
+
+        if patch
+            promise = @http.patch(url, data)
+        else
+            promise = @http.put(url, data)
+
+        promise.success (data, status) =>
+            model._isModified = false
+            model._attrs = _.extend(model.getAttrs(), data)
+            model._modifiedAttrs = {}
+
+            model.applyCasts()
+            defered.resolve(model)
+
+        promise.error (data, status) ->
+            defered.reject(data)
+
+        return defered.promise
+
+    saveAttribute: (model, attribute, patch=true) ->
+        defered = @q.defer()
+
+        if not model.isModified() and patch
+            defered.resolve(model)
+            return defered.promise
+
+        url = @.resolveUrlForAttributeModel(model)
+
+        data = {}
+
+        data[attribute] = model.getAttrs()
 
         if patch
             promise = @http.patch(url, data)
@@ -109,11 +143,25 @@ class RepositoryService extends taiga.Service
     queryMany: (name, params, options={}) ->
         url = @urls.resolve(name)
         httpOptions = {headers: {}}
+
         if not options.enablePagination
             httpOptions.headers["x-disable-pagination"] =  "1"
 
         return @http.get(url, params, httpOptions).then (data) =>
             return _.map(data.data, (x) => @model.make_model(name, x))
+
+    queryOneAttribute: (name, id, attribute, params, options={}) ->
+        url = @urls.resolve(name, id)
+        httpOptions = {headers: {}}
+
+        if not options.enablePagination
+            httpOptions.headers["x-disable-pagination"] =  "1"
+
+        return @http.get(url, params, httpOptions).then (data) =>
+            model = @model.make_model(name, data.data[attribute])
+            model.parent = id
+
+            return model
 
     queryOne: (name, id, params, options={}) ->
         url = @urls.resolve(name)

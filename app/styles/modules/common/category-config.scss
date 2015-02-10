@@ -4,13 +4,14 @@
         border-top: 1px solid $gray-light;
     }
     .resume {
-        @include table-flex($align-items: center);
+        align-items: space-between;
         cursor: pointer;
+        display: flex;
         padding: 1rem;
         position: relative;
     }
     .resume-title {
-        @include table-flex-child(1, 280px, 0);
+        width: 280px;
     }
     .count {
         color: $gray-light;
@@ -18,7 +19,8 @@
         padding-right: 5px;
     }
     .summary-role {
-        @include table-flex-child(3, 280px, 0);
+        flex: 1;
+        width: 280px;
         .role-summary-single {
             background: $gray-light;
             display: inline-block;
@@ -34,12 +36,12 @@
         }
     }
     .icon {
-        @include table-flex-child(1, 0, 0);
         @extend %xlarge;
+        flex: 1;
         text-align: right;
     }
     .category-items {
-        @include slide(400px, overflow-y);
+        @include slide(400px, hidden);
         background-color: $whitish;
         width: 100%;
         .items-container {

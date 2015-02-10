@@ -1,35 +1,30 @@
 .duty-assigned-to {
-    @include table-flex();
+    display: flex;
     margin-top: 1rem;
     position: relative;
     &:hover {
         .assigned-to {
             .icon-delete {
-                @include transition (opacity .3s linear);
                 opacity: 1;
+                transition: opacity .3s linear;
             }
         }
     }
-    &.loading {
-        width: 100%;
-        span {
-            font-size: 30px;
-            padding: 20px 0;
-            text-align: center;
-            width: 100%;
-            @include animation (loading .5s linear);
-            @include animation (spin 1s linear infinite);
-        }
+    .loading-spinner {
+        @extend %loading-spinner;
+        margin: 1rem auto;
+        max-height: 2rem;
+        max-width: 2rem;
     }
     .user-avatar {
-        @include table-flex-child(1, 0);
+        flex-grow: 1;
         img {
             border-radius: 8%;
             width: 100%;
         }
     }
     .assigned-to {
-        @include table-flex-child(3, 0);
+        flex-grow: 3;
         margin-left: 1rem;
         margin-top: 15px;
         .assigned-title {

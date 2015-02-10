@@ -136,6 +136,7 @@ ProjectValuesDirective = ($log, $repo, $confirm, $location, animationFrame) ->
             $scope.newValue = {
                 "name": ""
                 "is_closed": false
+                "is_archived": false
             }
 
         initializeNewValue()
@@ -208,7 +209,7 @@ ProjectValuesDirective = ($log, $repo, $confirm, $location, animationFrame) ->
                     animationFrame.add () ->
                          goToBottomList()
 
-                $el.find(".new-value").hide()
+                $el.find(".new-value").addClass("hidden")
                 initializeNewValue()
 
             promise.then null, (data) ->

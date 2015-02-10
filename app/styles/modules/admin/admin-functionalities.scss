@@ -2,37 +2,35 @@
     form {
         display: flex;
         flex-wrap: wrap;
-        width: 100%;
     }
     .functionality {
-        @include transition(all .2s linear);
-        @include table-flex(center, center, flex, column, wrap, center);
+        align-content: center;
+        align-items: center;
         background-color: $whitish;
-        display: inline-block;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
         margin-bottom: .3rem;
         margin-right: .3rem;
-        min-height: 14px;
         opacity: .5;
         padding: 1rem;
         position: relative;
+        transition: all .2s linear;
         vertical-align: top;
         width: 32%;
-        &:nth-child(3n+1) {
-            margin-right: 0;
-        }
         &.active {
             background-color: #e9f0da;
             opacity: 1;
         }
         .icon {
-            @include table-flex-child(1, 120px, 0, 100%);
             @extend %xxlarge;
+            flex-basis: 60px;
             margin: 0 auto;
-            min-height: 60px;
-            text-align: center;
+            min-width: 60px;
         }
         .desc {
-            @include table-flex-child(1 , 0, 0, 100%);
+            text-align: center;
+            width: 100%;
         }
         .activate-input {
             display: none;
@@ -44,11 +42,8 @@
             }
         }
         span {
-            font-weight: bold;
-        }
-        p {
-            margin-bottom: 1rem;
-            min-height: 4.5rem;
+            @extend %bold;
+            display: block;
         }
         select {
             margin-top: 1rem;

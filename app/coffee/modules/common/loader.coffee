@@ -57,7 +57,7 @@ Loader = () ->
 
     defaultConfig = {
         enabled: false,
-        minTime: 1000
+        minTime: 300
     }
 
     config = _.merge({}, defaultConfig)
@@ -97,8 +97,6 @@ Loader = () ->
             startCurrentPageLoader: () ->
                 if config.enabled
                     start()
-                else
-                    pageLoaded(true)
 
             onStart: (fn) ->
                 $rootscope.$on("loader:start", fn)

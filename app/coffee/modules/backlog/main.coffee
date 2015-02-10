@@ -27,6 +27,7 @@ scopeDefer = @.taiga.scopeDefer
 bindOnce = @.taiga.bindOnce
 groupBy = @.taiga.groupBy
 timeout = @.taiga.timeout
+bindMethods = @.taiga.bindMethods
 
 module = angular.module("taigaBacklog")
 
@@ -53,7 +54,7 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
 
     constructor: (@scope, @rootscope, @repo, @confirm, @rs, @params, @q,
                   @location, @appTitle, @navUrls, @events, @analytics, tgLoader) ->
-        _.bindAll(@)
+        bindMethods(@)
 
         @scope.sectionName = "Backlog"
         @showTags = false
@@ -72,10 +73,11 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
 
                 @scope.$broadcast("showTags", @showTags)
 
-            tgLoader.pageLoaded()
-
         # On Error
         promise.then null, @.onInitialDataError.bind(@)
+
+        # Finally
+        promise.finally tgLoader.pageLoaded
 
     initializeEventHandlers: ->
         @scope.$on "usform:bulk:success", =>
@@ -107,6 +109,9 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
         @scope.$on("sprint:us:move", @.moveUs)
         @scope.$on("sprint:us:moved", @.loadSprints)
         @scope.$on("sprint:us:moved", @.loadProjectStats)
+
+        @scope.$on("backlog:load-closed-sprints", @.loadClosedSprints)
+        @scope.$on("backlog:unload-closed-sprints", @.unloadClosedSprints)
 
     initializeSubscription: ->
         routingKey1 = "changes.project.#{@scope.projectId}.userstories"
@@ -141,13 +146,32 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
         return @rs.projects.tagsColors(@scope.projectId).then (tags_colors) =>
             @scope.project.tags_colors = tags_colors
 
+    unloadClosedSprints: ->
+        @scope.$apply =>
+            @scope.closedSprints =  []
+            @rootscope.$broadcast("closed-sprints:reloaded", [])
+
+    loadClosedSprints: ->
+        params = {closed: true}
+        return @rs.sprints.list(@scope.projectId, params).then (sprints) =>
+            # NOTE: Fix order of USs because the filter orderBy does not work propertly in partials files
+            for sprint in sprints
+                sprint.user_stories = _.sortBy(sprint.user_stories, "sprint_order")
+            @scope.closedSprints =  sprints
+            @rootscope.$broadcast("closed-sprints:reloaded", sprints)
+            return sprints
+
     loadSprints: ->
-        return @rs.sprints.list(@scope.projectId).then (sprints) =>
+        params = {closed: false}
+        return @rs.sprints.list(@scope.projectId, params).then (sprints) =>
             # NOTE: Fix order of USs because the filter orderBy does not work propertly in partials files
             for sprint in sprints
                 sprint.user_stories = _.sortBy(sprint.user_stories, "sprint_order")
 
             @scope.sprints = sprints
+            @scope.openSprints = _.filter(sprints, (sprint) => not sprint.closed).reverse()
+            @scope.closedSprints =  []
+
             @scope.sprintsCounter = sprints.length
             @scope.sprintsById = groupBy(sprints, (x) -> x.id)
             @rootscope.$broadcast("sprints:loaded", sprints)
@@ -173,10 +197,10 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
         @scope.httpParams = @.getUrlFilters()
         @rs.userstories.storeQueryParams(@scope.projectId, @scope.httpParams)
 
-        promise = @.refreshTagsColors().then =>
-            return @rs.userstories.listUnassigned(@scope.projectId, @scope.httpParams)
+        promise = @q.all([@.refreshTagsColors(), @rs.userstories.listUnassigned(@scope.projectId, @scope.httpParams)])
 
-        return promise.then (userstories) =>
+        return promise.then (data) =>
+            userstories = data[1]
             # NOTE: Fix order of USs because the filter orderBy does not work propertly in the partials files
             @scope.userstories = _.sortBy(userstories, "backlog_order")
 
@@ -199,8 +223,10 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
         ])
 
     loadProject: ->
-        return @rs.projects.get(@scope.projectId).then (project) =>
+        return @rs.projects.getBySlug(@params.pslug).then (project) =>
+            @scope.projectId = project.id
             @scope.project = project
+            @scope.totalClosedMilestones = project.total_closed_milestones
             @scope.$emit('project:loaded', project)
             @scope.points = _.sortBy(project.points, "order")
             @scope.pointsById = groupBy(project.points, (x) -> x.id)
@@ -209,15 +235,12 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
             return project
 
     loadInitialData: ->
-        # Resolve project slug
-        promise = @repo.resolve({pslug: @params.pslug}).then (data) =>
-            @scope.projectId = data.project
+        promise = @.loadProject()
+        promise.then (project) =>
+            @.fillUsersAndRoles(project.users, project.roles)
             @.initializeSubscription()
-            return data
 
-        return promise.then(=> @.loadProject())
-                      .then(=> @.loadUsersAndRoles())
-                      .then(=> @.loadBacklog())
+        return promise.then(=> @.loadBacklog())
 
     filterVisibleUserstories: ->
         @scope.visibleUserstories = []
@@ -389,14 +412,14 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
 
         # Rehash userstories order field
         # and persist in bulk all changes.
-        promise = @q.all.apply(null, promises).then =>
+        promise = @q.all(promises).then =>
             items = @.resortUserStories(newSprint.user_stories, "sprint_order")
             data = @.prepareBulkUpdateData(items, "sprint_order")
 
-            return @rs.userstories.bulkUpdateSprintOrder(project, data).then =>
+            @rs.userstories.bulkUpdateSprintOrder(project, data).then =>
                 @rootscope.$broadcast("sprint:us:moved", us, oldSprintId, newSprintId)
 
-            return @rs.userstories.bulkUpdateBacklogOrder(project, data).then =>
+            @rs.userstories.bulkUpdateBacklogOrder(project, data).then =>
                 for us in usList
                     @rootscope.$broadcast("sprint:us:moved", us, oldSprintId, newSprintId)
 
@@ -412,7 +435,7 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
         urlfilters = @.getUrlFilters()
 
         if urlfilters.q
-            @scope.filtersQ = urlfilters.q
+            @scope.filtersQ = @scope.filtersQ or urlfilters.q
 
         searchdata = {}
         for name, value of urlfilters
@@ -444,6 +467,7 @@ class BacklogController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.F
             return obj
 
         plainStatuses = _.map(@scope.userstories, "status")
+
         plainStatuses = _.filter plainStatuses, (status) =>
             if status
                 return status
@@ -668,19 +692,9 @@ module.directive("tgBacklog", ["$tgRepo", "$rootScope", BacklogDirective])
 ## User story points directive
 #############################################################################
 
-UsRolePointsSelectorDirective = ($rootscope) ->
+UsRolePointsSelectorDirective = ($rootscope, $template) ->
     #TODO: i18n
-    selectionTemplate = _.template("""
-    <ul class="popover pop-role">
-        <li><a class="clear-selection" href="" title="All">All</a></li>
-        <% _.each(roles, function(role) { %>
-        <li>
-            <a href="" class="role" title="<%- role.name %>"
-               data-role-id="<%- role.id %>"><%- role.name %></a>
-        </li>
-        <% }); %>
-    </ul>
-    """)
+    selectionTemplate = $template.get("backlog/us-role-points-popover.html", true)
 
     link = ($scope, $el, $attrs) ->
         # Watchers
@@ -729,39 +743,12 @@ UsRolePointsSelectorDirective = ($rootscope) ->
 
     return {link: link}
 
-module.directive("tgUsRolePointsSelector", ["$rootScope", UsRolePointsSelectorDirective])
+module.directive("tgUsRolePointsSelector", ["$rootScope", "$tgTemplate", UsRolePointsSelectorDirective])
 
 
-UsPointsDirective = ($repo) ->
-    rolesTemplate = _.template("""
-    <ul class="popover pop-role">
-        <% _.each(roles, function(role) { %>
-        <li>
-            <a href="" class="role" title="<%- role.name %>"
-               data-role-id="<%- role.id %>">
-                <%- role.name %>
-                (<%- role.points %>)
-            </a>
-        </li>
-        <% }); %>
-    </ul>
-    """)
-
-    pointsTemplate = _.template("""
-    <ul class="popover pop-points-open">
-        <% _.each(points, function(point) { %>
-        <li>
-            <% if (point.selected) { %>
-            <a href="" class="point" title="<%- point.name %>"
-               data-point-id="<%- point.id %>"><%- point.name %></a>
-            <% } else { %>
-            <a href="" class="point active" title="<%- point.name %>"
-               data-point-id="<%- point.id %>"><%- point.name %></a>
-            <% } %>
-        </li>
-        <% }); %>
-    </ul>
-    """)
+UsPointsDirective = ($repo, $tgTemplate) ->
+    rolesTemplate = $tgTemplate.get("backlog/us-points-roles-popover.html", true)
+    pointsTemplate = $tgTemplate.get("backlog/us-points-popover.html", true)
 
     link = ($scope, $el, $attrs) ->
         $ctrl = $el.controller()
@@ -828,8 +815,9 @@ UsPointsDirective = ($repo) ->
             dom = $el.find("a > span.points-value")
 
             if roleId == null or numberOfRoles == 1
-                dom.text(us.total_points)
-                dom.parent().prop("title", us.total_points)
+                totalPoints = if us.total_points? then us.total_points else "?"
+                dom.text(totalPoints)
+                dom.parent().prop("title", totalPoints)
             else
                 pointId = us.points[roleId]
                 pointObj = $scope.pointsById[pointId]
@@ -921,7 +909,7 @@ UsPointsDirective = ($repo) ->
 
     return {link: link}
 
-module.directive("tgBacklogUsPoints", ["$tgRepo", UsPointsDirective])
+module.directive("tgBacklogUsPoints", ["$tgRepo", "$tgTemplate", UsPointsDirective])
 
 #############################################################################
 ## Burndown graph directive
@@ -979,6 +967,7 @@ tgBacklogGraphDirective = ->
             grid: {
                 borderWidth: { top: 0, right: 1, left:0, bottom: 0 }
                 borderColor: "#ccc"
+                hoverable: true
             }
             xaxis: {
                 ticks: dataToDraw.milestones.length
@@ -1003,6 +992,22 @@ tgBacklogGraphDirective = ->
                 }
             }
             colors: colors
+            tooltip: true
+            tooltipOpts: {
+                content: (label, xval, yval, flotItem) ->
+                    #TODO: i18n
+                    if flotItem.seriesIndex == 1
+                        return "Optimal pending points for sprint #{xval} should be #{yval}"
+
+                    else if flotItem.seriesIndex == 2
+                        return "Real pending points for sprint #{xval} is #{yval}"
+
+                    else if flotItem.seriesIndex == 3
+                        return "Incremented points by team requirements for sprint #{xval} is #{Math.abs(yval)}"
+
+                    else
+                        return "Incremented points by client requirements for sprint #{xval} is #{Math.abs(yval)}"
+            }
         }
 
         element.empty()
@@ -1031,12 +1036,8 @@ module.directive("tgGmBacklogGraph", tgBacklogGraphDirective)
 ## Backlog progress bar directive
 #############################################################################
 
-TgBacklogProgressBarDirective = ->
-    template = _.template("""
-        <div class="defined-points" title="Excess of points"></div>
-        <div class="project-points-progress" title="Pending Points" style="width: <%- projectPointsPercentaje %>%"></div>
-        <div class="closed-points-progress" title="Closed points" style="width: <%- closedPointsPercentaje %>%"></div>
-    """)
+TgBacklogProgressBarDirective = ($template) ->
+    template = $template.get("backlog/progress-bar.html", true)
 
     render = (el, projectPointsPercentaje, closedPointsPercentaje) ->
         el.html(template({
@@ -1073,4 +1074,4 @@ TgBacklogProgressBarDirective = ->
 
     return {link: link}
 
-module.directive("tgBacklogProgressBar", TgBacklogProgressBarDirective)
+module.directive("tgBacklogProgressBar", ["$tgTemplate", TgBacklogProgressBarDirective])

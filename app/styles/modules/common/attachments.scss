@@ -3,8 +3,11 @@
 }
 
 .attachments-header {
-    @include table-flex(space-between, center, flex, row, wrap, space-between);
+    align-content: space-between;
+    align-items: center;
     background: $whitish;
+    display: flex;
+    justify-content: space-between;
     padding: .5rem 1rem;
     .attachments-title {
         @extend %medium;
@@ -20,31 +23,31 @@
         color: $grayer;
         cursor: pointer;
         &:hover {
-            @include transition (color .2s ease-in);
             color: $green-taiga;
+            transition: color .2s ease-in;
         }
     }
 }
 
 .single-attachment {
-    @include table-flex();
     @extend %small;
     align-items: center;
     border-bottom: 1px solid $whitish;
+    display: flex;
     padding: .5rem 0 .5rem 1rem;
     position: relative;
     &:hover {
         .attachment-settings {
             .settings {
-                @include transition (opacity .2s ease-in);
                 opacity: 1;
+                transition: opacity .2s ease-in;
             }
         }
     }
     &.ui-sortable-helper {
-        @include transition (background .2s ease-in);
         background: lighten($green-taiga, 60%);
         box-shadow: 1px 1px 10px rgba($black, .1);
+        transition: background .2s ease-in;
     }
     &.deprecated {
         color: $gray-light;
@@ -57,27 +60,35 @@
         height: 40px;
     }
     .attachment-name {
-        @include ellipsis(200px);
-        @include table-flex-child(1, 35%, 0);
         @extend %bold;
+        @include ellipsis(200px);
+        flex-basis: 35%;
+        flex-grow: 1;
         padding-right: 1rem;
         .icon {
             margin-right: .5rem;
         }
     }
     .attachment-size {
-        @include table-flex-child(1, 15%, 0);
         color: $gray-light;
+        flex-basis: 15%;
+        flex-grow: 1;
         margin-right: .5rem;
     }
-    .attachment-comments {
-        @include table-flex-child(1, 35%, 0);
+    .attachment-comments,
+    .editable-attachment-comment {
+        flex-basis: 35%;
+        flex-grow: 1;
         span {
             color: $gray;
         }
     }
+    .editable-attachment-comment {
+        @extend %medium;
+    }
     .attachment-settings {
-        @include table-flex-child(1, 15%, 0);
+        flex-basis: 15%;
+        flex-grow: 1;
         .settings,
         .editable-settings {
             @extend %large;
@@ -123,13 +134,11 @@
         span {
             color: $gray-light;
         }
-        input[type="checkbox"] {
+        input {
             margin-right: .2rem;
             vertical-align: middle;
-            &:checked {
-                + span {
-                    color: $grayer;
-                }
+            &:checked+span {
+                color: $grayer;
             }
         }
     }
@@ -157,8 +166,8 @@
         margin-left: .5rem;
     }
     &:hover {
-        @include transition (background .2s ease-in);
         background: lighten($green-taiga, 60%);
+        transition: background .2s ease-in;
     }
 }
 

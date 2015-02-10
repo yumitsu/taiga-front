@@ -7,28 +7,35 @@
     }
 
     .row {
-        @include table-flex($align-content: center, $align-items: center);
+        align-content: center;
+        align-items: center;
+        display: flex;
         padding: .5rem;
         &:hover {
             background: lighten($green-taiga, 60%);
-            @include transition (background .2s ease-in);
+            transition: background .2s ease-in;
         }
         .user-stories {
-            @include table-flex-child(5, 0, 1);
+            flex-basis: 0;
+            flex-grow: 5;
+            flex-shrink: 1;
         }
         .status,
         .points {
-            @include table-flex-child(1, 100px, 0);
+            flex-basis: 100px;
+            flex-grow: 1;
             padding: 0 1rem;
             text-align: center;
         }
         .assigned-to {
-            @include table-flex-child(1, 250px, 0);
+            flex-basis: 250px;
+            flex-grow: 1;
+            padding: 0 1rem;
         }
     }
     .row-selected {
         background: lighten($green-taiga, 60%);
-        @include transition (background .2s ease-in);
+        transition: background .2s ease-in;
     }
 
       // TODO: refactor xaviju
@@ -48,7 +55,7 @@
             color: $gray-light;
             &:hover {
                 color: $grayer;
-                @include transition (color .3s linear);
+                transition: color .3s linear;
             }
         }
     }
@@ -62,7 +69,7 @@
     }
     .table-main {
         @extend %small;
-        border-bottom: 1px solid $gray-light;
+        border-bottom: 1px solid $whitish;
     }
     .status,
     .points {

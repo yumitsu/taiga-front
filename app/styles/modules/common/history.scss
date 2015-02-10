@@ -6,28 +6,29 @@
     padding: .5rem;
     &:hover {
         .icon {
-            @include transform(rotate(180deg));
-            @include transition(all .2s linear);
             color: $green-taiga;
+            transform: rotate(180deg);
+            transition: all .2s linear;
         }
     }
     .icon {
-        @include transform(rotate(0));
-        @include transition(all .2s linear);
         color: $grayer;
         float: right;
+        transform: rotate(0);
+        transition: all .2s linear;
     }
 }
 .change-entry {
-    @include table-flex;
     border-bottom: 1px solid $gray-light;
+    display: flex;
     padding: .5rem;
     &:last-child {
         border-bottom: 0;
     }
     .activity-changed,
     .activity-fromto {
-        @include table-flex-child(1, 50px, 0);
+        flex-basis: 50px;
+        flex-grow: 1;
     }
     .activity-changed {
         @extend %bold;
@@ -48,15 +49,15 @@
         }
     }
     a {
-        @include transition(color .2s ease-in);
         color: $gray-light;
         padding: 0 2rem;
+        transition: color .2s ease-in;
         &.active {
             color: $grayer;
         }
         &:hover {
-            @include transition(color .2s ease-in);
             color: $green-taiga;
+            transition: color .2s ease-in;
         }
     }
     .icon {
@@ -70,8 +71,12 @@
             display: block;
         }
         textarea {
-            @include transition(height .3s ease-in);
             height: 6rem;
+            transition: height .3s ease-in;
+        }
+        .help-markdown {
+            opacity: 1;
+            transition: opacity .3s linear;
         }
         .preview-icon {
             opacity: 1;
@@ -81,10 +86,12 @@
     }
     textarea {
         background: $white;
-        float: left;
-        height: 41px;
+        height: 5rem;
         margin-bottom: .5rem;
-        min-height: inherit;
+        min-height: 41px;
+    }
+    .help-markdown {
+        opacity: 0;
     }
     .save-comment {
         color: $white;
@@ -102,7 +109,7 @@
         opacity: 0;
     }
 }
-a.show-more-comments {
+.show-more-comments {
     @extend %small;
     border-bottom: 1px solid $gray-light;
     border-top: 1px solid $gray-light;
@@ -110,8 +117,8 @@ a.show-more-comments {
     display: block;
     padding: 1rem 0 1rem 1rem;
     &:hover {
-        @include transition (background .2s ease-in);
         background: lighten($green-taiga, 60%);
+        transition: background .2s ease-in;
     }
 }
 .more-comments {
@@ -129,7 +136,7 @@ a.show-more-comments {
     &.activeanimation {
         .comment-single.ng-enter:last-child,
         .comment-single.ng-leave:last-child {
-            @include transition(all .3s ease-in);
+            transition: all .3s ease-in;
         }
         .comment-single.ng-enter:last-child,
         .comment-single.ng-leave.ng-leave-active:last-child {
@@ -142,18 +149,18 @@ a.show-more-comments {
     }
 }
 .activity-single {
-    @include table-flex;
     border-bottom: 1px solid $gray-light;
+    display: flex;
     padding: 2rem 0;
     position: relative;
     &:hover {
         .comment-delete {
-            @include transition(opacity .2s linear);
             opacity: 1;
+            transition: opacity .2s linear;
         }
         .comment-restore {
-            @include transition(opacity .2s linear);
             opacity: 1;
+            transition: opacity .2s linear;
         }
     }
     &:first-child {
@@ -171,12 +178,12 @@ a.show-more-comments {
             color: $gray-light;
             margin-left: .3rem;
             &:hover {
-                @include transition(color .2s linear);
                 color: $green-taiga;
+                transition: color .2s linear;
             }
         }
         img {
-            @include filter(grayscale(100%));
+            filter: grayscale(100%);
             opacity: .5;
         }
         .comment-body {
@@ -197,8 +204,8 @@ a.show-more-comments {
             vertical-align: baseline;
         }
         &:hover {
-            @include transition(color .2s linear);
             color: $green-taiga;
+            transition: color .2s linear;
         }
     }
     .username {
@@ -206,7 +213,8 @@ a.show-more-comments {
         margin-bottom: .5rem;
     }
     .activity-user {
-        @include table-flex-child(1, 50px, 0);
+        flex-basis: 50px;
+        flex-grow: 1;
         img {
             max-width: 70px;
             width: 100%;
@@ -218,7 +226,8 @@ a.show-more-comments {
     }
 
     .activity-content {
-        @include table-flex-child(20, 150px, 0);
+        flex-basis: 150px;
+        flex-grow: 20;
     }
     .changes {
         background: $whitish;
@@ -238,15 +247,15 @@ a.show-more-comments {
         margin-bottom: 0;
     }
     .comment-delete {
-        @include transition(all .2s linear);
         color: $red;
         opacity: 0;
         position: absolute;
         right: 0;
         top: 2rem;
+        transition: all .2s linear;
         &:hover {
-            @include transition(color .2s linear);
             color: $red-light;
+            transition: color .2s linear;
         }
     }
     &.activity {

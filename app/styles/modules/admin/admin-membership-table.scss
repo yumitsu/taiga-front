@@ -3,7 +3,9 @@
         @extend %bold;
     }
     .avatar {
-        @include table-flex(stretch, center, flex, row, wrap, flex-start);
+        align-items: center;
+        display: flex;
+        justify-content: flex-start;
         figcaption {
             margin-left: 1rem;
             width: 75%;
@@ -15,7 +17,8 @@
             }
         }
         img {
-            @include table-flex-child(1, 35px, 0);
+            flex-basis: 35px;
+            flex-grow: 1;
             max-width: 35px;
         }
         .name,
@@ -38,7 +41,9 @@
         padding-right: 1rem;
     }
     .row-status {
-        @include table-flex($justify-content: space-between, $align-items: center);
+        align-items: center;
+        display: flex;
+        justify-content: space-between;
     }
     .active,
     .pending {
@@ -54,9 +59,9 @@
             float: rsdsdfdvsdvight;
         }
         &:hover {
-            @include transition (background-color .3s linear);
             background-color: $red;
             color: $white;
+            transition: background-color .3s linear;
         }
     }
     .delete {
@@ -78,17 +83,21 @@
     .row-role,
     .header-member,
     .header-role {
-        @include table-flex-child(4, 0, 0);
+        flex-basis: 210px;
+        flex-grow: 3;
+        min-width: 210px;
     }
     .row-admin,
     .header-admin {
-        @include table-flex-child(1, 0, 0);
+        flex-basis: 0;
+        flex-grow: 1;
+        min-width: 70px;
     }
     .row-status,
     .header-status {
-        @include table-flex-child(1, 50px, 0);
+        flex-basis: 50px;
+        flex-grow: 1;
     }
-
     .check {
         background-color: darken($whitish, 10%);
         border-radius: 2px;
@@ -97,7 +106,7 @@
         overflow: hidden;
         position: relative;
         width: 65px;
-        input[type=checkbox] {
+        input {
             cursor: pointer;
             height: 500px;
             left: -10px;
@@ -107,9 +116,9 @@
             width: 500px;
             z-index: 999;
             + div {
-                @include transition (all .2s linear);
                 background-color: $button-gray;
                 height: 25px;
+                transition: all .2s linear;
                 width: 50%;
             }
             ~ .check-text {
@@ -128,11 +137,11 @@
                 opacity: .6;
             }
         }
-        input[type=checkbox]:checked {
+        input:checked {
             + div {
-                @include transition (all .2s linear);
                 background-color: #74a218;
                 margin-left: 50%;
+                transition: all .2s linear;
             }
             ~ .check-yes {
                 opacity: .6;

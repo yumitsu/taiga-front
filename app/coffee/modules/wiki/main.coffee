@@ -63,67 +63,49 @@ class WikiDetailController extends mixOf(taiga.Controller, taiga.PageMixin)
         # On Success
         promise.then () =>
             @appTitle.set("Wiki - " + @scope.project.name)
-            tgLoader.pageLoaded()
 
         # On Error
         promise.then null, @.onInitialDataError.bind(@)
+        promise.finally tgLoader.pageLoaded
 
     loadProject: ->
-        return @rs.projects.get(@scope.projectId).then (project) =>
+        return @rs.projects.getBySlug(@params.pslug).then (project) =>
+            @scope.projectId = project.id
             @scope.project = project
             @scope.$emit('project:loaded', project)
             @scope.membersById = groupBy(project.memberships, (x) -> x.user)
             return project
 
     loadWiki: ->
-        if @scope.wikiId
-            return @rs.wiki.get(@scope.wikiId).then (wiki) =>
-                @scope.wiki = wiki
-                return wiki
+        promise = @rs.wiki.getBySlug(@scope.projectId, @params.slug)
+        promise.then (wiki) =>
+            @scope.wiki = wiki
+            @scope.wikiId = wiki.id
+            return @scope.wiki
 
-        if @scope.project.my_permissions.indexOf("add_wiki_page") == -1
-            return null
+        promise.then null, (xhr) =>
+            @scope.wikiId = null
 
-        data = {
-            project: @scope.projectId
-            slug: @scope.wikiSlug
-            content: ""
-        }
-        @scope.wiki = @model.make_model("wiki", data)
-        return @scope.wiki
+            if @scope.project.my_permissions.indexOf("add_wiki_page") == -1
+                return null
+
+            data = {
+                project: @scope.projectId
+                slug: @scope.wikiSlug
+                content: ""
+            }
+            @scope.wiki = @model.make_model("wiki", data)
+            return @scope.wiki
 
     loadWikiLinks: ->
         return @rs.wiki.listLinks(@scope.projectId).then (wikiLinks) =>
             @scope.wikiLinks = wikiLinks
 
     loadInitialData: ->
-        params = {
-            pslug: @params.pslug
-            wikipage: @params.slug
-        }
-
-        # Resolve project slug
-        promise = @repo.resolve({pslug: @params.pslug}).then (data) =>
-            @scope.projectId = data.project
-            return data
-
-        # Resolve wiki slug
-        # This should be done in two steps because is not same thing
-        # not found response for project and not found for wiki page
-        # and they should be hendled separately.
-        promise = promise.then =>
-            prom = @repo.resolve({wikipage: @params.slug, pslug: @params.pslug})
-
-            prom = prom.then (data) =>
-                @scope.wikiId = data.wikipage
-
-            return prom.then null, (xhr) =>
-                @scope.wikiId = null
-
-        return promise.then(=> @.loadProject())
-                      .then(=> @.loadUsersAndRoles())
-                      .then(=> @q.all([@.loadWikiLinks(),
-                                       @.loadWiki()]))
+        promise = @.loadProject()
+        return promise.then (project) =>
+            @.fillUsersAndRoles(project.users, project.roles)
+            @q.all([@.loadWikiLinks(), @.loadWiki()])
 
     delete: ->
         # TODO: i18n
@@ -150,26 +132,8 @@ module.controller("WikiDetailController", WikiDetailController)
 ## Wiki Summary Directive
 #############################################################################
 
-WikiSummaryDirective = ($log) ->
-    template = _.template("""
-    <ul>
-        <li>
-            <span class="number"><%- totalEditions %></span>
-            <span class="description">times <br />edited</span>
-        </li>
-        <li>
-            <span class="number"><%- lastModifiedDate %></span>
-            <span class="description"> last <br />edit</span>
-        </li>
-        <li class="username-edition">
-            <figure class="avatar">
-                <img src="<%- user.imgUrl %>" alt="<%- user.name %>">
-            </figure>
-            <span class="description">last modification</span>
-            <span class="username"><%- user.name %></span>
-        </li>
-    </ul>
-    """)
+WikiSummaryDirective = ($log, $template) ->
+    template = $template.get("wiki/wiki-summary.html", true)
 
     link = ($scope, $el, $attrs, $model) ->
         render = (wiki) ->
@@ -195,6 +159,9 @@ WikiSummaryDirective = ($log) ->
             return if not wikiPage
             render(wikiPage)
 
+        $scope.$on "wiki:edit", (event, wikiPage) ->
+            render(wikiPage)
+
         $scope.$on "$destroy", ->
             $el.off()
 
@@ -204,32 +171,14 @@ WikiSummaryDirective = ($log) ->
         require: "ngModel"
     }
 
-module.directive("tgWikiSummary", ["$log", WikiSummaryDirective])
+module.directive("tgWikiSummary", ["$log", "$tgTemplate", WikiSummaryDirective])
 
 
 #############################################################################
 ## Editable Wiki Content Directive
 #############################################################################
 
-EditableWikiContentDirective = ($window, $document, $repo, $confirm, $loading, $location, $navUrls,
-                                $analytics) ->
-    template = """
-        <div class="view-wiki-content">
-            <section class="wysiwyg"
-                     tg-bind-html="wiki.html"></section>
-            <span class="edit icon icon-edit" title="Edit"></span>
-        </div>
-        <div class="edit-wiki-content" style="display: none;">
-            <textarea placeholder="Write your wiki page here"
-                      ng-model="wiki.content"
-                      tg-markitup="tg-markitup"></textarea>
-            <span class="action-container">
-                <a class="save icon icon-floppy" href="" title="Save" />
-                <a class="cancel icon icon-delete" href="" title="Cancel" />
-            </span>
-        </div>
-    """ # TODO: i18n
-
+EditableWikiContentDirective = ($window, $document, $repo, $confirm, $loading, $analytics, $qqueue) ->
     link = ($scope, $el, $attrs, $model) ->
         isEditable = ->
             return $scope.project.my_permissions.indexOf("modify_wiki_page") != -1
@@ -248,12 +197,11 @@ EditableWikiContentDirective = ($window, $document, $repo, $confirm, $loading, $
             $el.find(".edit-wiki-content").remove()
 
         cancelEdition = ->
-            if $scope.wiki.id
-                $scope.wiki.revert()
-                switchToReadMode()
-            else
-                ctx = {project: $scope.projectSlug}
-                $location.path($navUrls.resolve("project-wiki", ctx))
+            return if not $model.$modelValue.id
+
+            $scope.$apply () =>
+                $model.$modelValue.revert()
+            switchToReadMode()
 
         getSelectedText = ->
             if $window.getSelection
@@ -262,22 +210,14 @@ EditableWikiContentDirective = ($window, $document, $repo, $confirm, $loading, $
                 return $document.selection.createRange().text
             return null
 
-        $el.on "mouseup", ".view-wiki-content", (event) ->
-            # We want to dettect the a inside the div so we use the target and
-            # not the currentTarget
-            target = angular.element(event.target)
-            return if not isEditable()
-            return if target.is('a')
-            return if getSelectedText()
-            switchToEditMode()
-
-        $el.on "click", ".save", debounce 2000, ->
+        save = $qqueue.bindAdd (wiki) ->
             onSuccess = (wikiPage) ->
-                if not $scope.wiki.id?
+                if not wiki.id?
                     $analytics.trackEvent("wikipage", "create", "create wiki page", 1)
 
-                $scope.wiki = wikiPage
-                $model.setModelValue = $scope.wiki
+                $model.$modelValue = wikiPage
+                $scope.$broadcast("wiki:edit", wikiPage)
+
                 $confirm.notify("success")
                 switchToReadMode()
 
@@ -285,23 +225,48 @@ EditableWikiContentDirective = ($window, $document, $repo, $confirm, $loading, $
                 $confirm.notify("error")
 
             $loading.start($el.find('.save-container'))
-            if $scope.wiki.id?
-                promise = $repo.save($scope.wiki).then(onSuccess, onError)
+
+            if wiki.id?
+                promise = $repo.save(wiki).then(onSuccess, onError)
             else
-                promise = $repo.create("wiki", $scope.wiki).then(onSuccess, onError)
+                promise = $repo.create("wiki", wiki).then(onSuccess, onError)
+
             promise.finally ->
                 $loading.finish($el.find('.save-container'))
+
+        $el.on "mousedown", ".view-wiki-content", (event) ->
+            # Prepare the scroll movement detection
+            target = angular.element(event.target)
+            if target.is('pre')
+                target.data("scroll-pos", target[0].scrollLeft)
+
+        $el.on "mouseup", ".view-wiki-content", (event) ->
+            # We want to dettect the a inside the div so we use the target and
+            # not the currentTarget
+            target = angular.element(event.target)
+            return if not isEditable()
+            return if target.is('a')
+            return if getSelectedText()
+            if target.is('pre')
+                prevPos = target.data("scroll-pos")
+                target.data("scroll-pos", null)
+                if prevPos != target[0].scrollLeft
+                    return
+
+            switchToEditMode()
+
+        $el.on "click", ".save", debounce 2000, ->
+            save($scope.wiki)
 
         $el.on "click", ".cancel", ->
             cancelEdition()
 
-        $el.on "keyup", "textarea", (event) ->
+        $el.on "keydown", "textarea", (event) ->
             if event.keyCode == 27
                 cancelEdition()
 
         $scope.$watch $attrs.ngModel, (wikiPage) ->
             return if not wikiPage
-            $scope.wiki = wikiPage
 
             if isEditable()
                 $el.addClass('editable')
@@ -317,9 +282,8 @@ EditableWikiContentDirective = ($window, $document, $repo, $confirm, $loading, $
         link: link
         restrict: "EA"
         require: "ngModel"
-        template: template
+        templateUrl: "wiki/editable-wiki-content.html"
     }
 
 module.directive("tgEditableWikiContent", ["$window", "$document", "$tgRepo", "$tgConfirm", "$tgLoading",
-                                           "$tgLocation", "$tgNavUrls", "$tgAnalytics",
-                                           EditableWikiContentDirective])
+                                           "$tgAnalytics", "$tgQqueue", EditableWikiContentDirective])

@@ -107,7 +107,7 @@ module.directive("tgSprintProgressbar", SprintProgressBarDirective)
 ## Created-by display directive
 #############################################################################
 
-CreatedByDisplayDirective = ->
+CreatedByDisplayDirective = ($template)->
     # Display the owner information (full name and photo) and the date of
     # creation of an object (like USs, tasks and issues).
     #
@@ -119,21 +119,16 @@ CreatedByDisplayDirective = ->
     #     'owner'(ng-model)
     #   - scope.usersById object is required.
 
-    template = _.template("""
-    <div class="user-avatar">
-        <img src="<%- owner.photo %>" alt="<%- owner.full_name_display %>" />
-    </div>
-
-    <div class="created-by">
-        <span class="created-title">Created by <%- owner.full_name_display %></span>
-        <span class="created-date"><%- date %></span>
-    </div>
-    """) # TODO: i18n
+    template = $template.get("common/components/created-by.html", true) # TODO: i18n
 
     link = ($scope, $el, $attrs) ->
         render = (model) ->
+            owner = $scope.usersById?[model.owner] or {
+                full_name_display: "external user"
+                photo: "/images/unnamed.png"
+            }
             html = template({
-                owner: $scope.usersById?[model.owner]
+                owner: owner
                 date: moment(model.created_date).format("DD MMM YYYY HH:mm")
             })
             $el.html(html)
@@ -150,70 +145,61 @@ CreatedByDisplayDirective = ->
         require: "ngModel"
     }
 
-module.directive("tgCreatedByDisplay", CreatedByDisplayDirective)
+module.directive("tgCreatedByDisplay", ["$tgTemplate", CreatedByDisplayDirective])
 
 
 #############################################################################
 ## Watchers directive
 #############################################################################
 
-WatchersDirective = ($rootscope, $confirm, $repo) ->
+WatchersDirective = ($rootscope, $confirm, $repo, $qqueue, $template) ->
     # You have to include a div with the tg-lb-watchers directive in the page
     # where use this directive
     #
     # TODO: i18n
-    template = _.template("""
-    <% if(isEditable){ %>
-    <div class="watchers-header">
-        <span class="title">watchers</span>
-        <a href="" title="Add watcher" class="icon icon-plus add-watcher"></a>
-    </div>
-    <% } else if(watchers.length > 0){ %>
-    <div class="watchers-header">
-        <span class="title">watchers</span>
-    </div>
-    <% }; %>
-
-    <% _.each(watchers, function(watcher) { %>
-    <div class="watcher-single">
-        <div class="watcher-avatar">
-            <span class="avatar" href="" title="<%- watcher.full_name_display %>">
-                <img src="<%- watcher.photo %>" alt="<%- watcher.full_name_display %>">
-            </span>
-        </div>
-        <div class="watcher-name">
-            <span><%- watcher.full_name_display %></span>
-
-            <% if(isEditable){ %>
-            <a class="icon icon-delete"
-               data-watcher-id="<%- watcher.id %>" href="" title="delete-watcher">
-            </a>
-            <% }; %>
-        </div>
-    </div>
-    <% }); %>
-    """)
+    template = $template.get("common/components/watchers.html", true)
 
     link = ($scope, $el, $attrs, $model) ->
         isEditable = ->
             return $scope.project?.my_permissions?.indexOf($attrs.requiredPerm) != -1
 
-        save = (model) ->
+        save = $qqueue.bindAdd (watchers) =>
+            item = $model.$modelValue.clone()
+            item.watchers = watchers
+            $model.$setViewValue(item)
+
             promise = $repo.save($model.$modelValue)
             promise.then ->
                 $confirm.notify("success")
-                watchers = _.map(model.watchers, (watcherId) -> $scope.usersById[watcherId])
+                watchers = _.map(watchers, (watcherId) -> $scope.usersById[watcherId])
+                renderWatchers(watchers)
+                $rootscope.$broadcast("history:reload")
+
+            promise.then null, ->
+                $model.$modelValue.revert()
+
+        deleteWatcher = $qqueue.bindAdd (watcherIds) =>
+            item = $model.$modelValue.clone()
+            item.watchers = watcherIds
+            $model.$setViewValue(item)
+
+            promise = $repo.save($model.$modelValue)
+            promise.then ->
+                $confirm.notify("success")
+                watchers = _.map(item.watchers, (watcherId) -> $scope.usersById[watcherId])
                 renderWatchers(watchers)
                 $rootscope.$broadcast("history:reload")
             promise.then null, ->
-                model.revert()
+                item.revert()
                 $confirm.notify("error")
+
 
         renderWatchers = (watchers) ->
             ctx = {
                 watchers: watchers
                 isEditable: isEditable()
             }
+
             html = template(ctx)
             $el.html(html)
 
@@ -232,13 +218,11 @@ WatchersDirective = ($rootscope, $confirm, $repo) ->
 
             $confirm.askOnDelete(title, message).then (finish) =>
                 finish()
+
                 watcherIds = _.clone($model.$modelValue.watchers, false)
                 watcherIds = _.pull(watcherIds, watcherId)
 
-                item = $model.$modelValue.clone()
-                item.watchers = watcherIds
-                $model.$setViewValue(item)
-                save(item)
+                deleteWatcher(watcherIds)
 
         $el.on "click", ".add-watcher", (event) ->
             event.preventDefault()
@@ -251,10 +235,7 @@ WatchersDirective = ($rootscope, $confirm, $repo) ->
             watchers.push(watcherId)
             watchers = _.uniq(watchers)
 
-            item = $model.$modelValue.clone()
-            item.watchers = watchers
-            $model.$setViewValue(item)
-            save(item)
+            save(watchers)
 
         $scope.$watch $attrs.ngModel, (item) ->
             return if not item?
@@ -266,61 +247,41 @@ WatchersDirective = ($rootscope, $confirm, $repo) ->
 
     return {link:link, require:"ngModel"}
 
-module.directive("tgWatchers", ["$rootScope", "$tgConfirm", "$tgRepo", WatchersDirective])
+module.directive("tgWatchers", ["$rootScope", "$tgConfirm", "$tgRepo", "$tgQqueue", "$tgTemplate", WatchersDirective])
 
 
 #############################################################################
 ## Assigned to directive
 #############################################################################
 
-AssignedToDirective = ($rootscope, $confirm, $repo, $loading) ->
+AssignedToDirective = ($rootscope, $confirm, $repo, $loading, $qqueue, $template) ->
     # You have to include a div with the tg-lb-assignedto directive in the page
     # where use this directive
     #
     # TODO: i18n
-    template = _.template("""
-    <% if (assignedTo) { %>
-    <div class="user-avatar">
-        <img src="<%- assignedTo.photo %>" alt="<%- assignedTo.full_name_display %>" />
-    </div>
-    <% } %>
-
-    <div class="assigned-to">
-        <span class="assigned-title">Assigned to</span>
-
-        <a href="" title="edit assignment" class="user-assigned <% if(isEditable){ %>editable<% }; %>">
-            <span class="assigned-name">
-            <% if (assignedTo) { %>
-                <%- assignedTo.full_name_display %>
-            <% } else { %>
-                Not assigned
-            <% } %>
-            </span>
-            <% if(isEditable){ %><span class="icon icon-arrow-bottom"></span><% }; %>
-        </a>
-        <% if (assignedTo!==null && isEditable) { %>
-        <a href="" title="delete assignment" class="icon icon-delete"></a>
-        <% } %>
-    </div>
-    """) # TODO: i18n
+    template = $template.get("common/components/assigned-to.html", true)
 
     link = ($scope, $el, $attrs, $model) ->
         isEditable = ->
             return $scope.project?.my_permissions?.indexOf($attrs.requiredPerm) != -1
 
-        save = (model) ->
+        save = $qqueue.bindAdd (userId) =>
+            $model.$modelValue.assigned_to = userId
+
             $loading.start($el)
 
             promise = $repo.save($model.$modelValue)
             promise.then ->
                 $loading.finish($el)
                 $confirm.notify("success")
-                renderAssignedTo(model)
+                renderAssignedTo($model.$modelValue)
                 $rootscope.$broadcast("history:reload")
             promise.then null, ->
-                model.revert()
+                $model.$modelValue.revert()
                 $confirm.notify("error")
                 $loading.finish($el)
+
+            return promise
 
         renderAssignedTo = (issue) ->
             assignedToId = issue?.assigned_to
@@ -347,12 +308,12 @@ AssignedToDirective = ($rootscope, $confirm, $repo, $loading) ->
             $confirm.ask(title).then (finish) =>
                 finish()
                 $model.$modelValue.assigned_to  = null
-                save($model.$modelValue)
+                save(null)
 
         $scope.$on "assigned-to:added", (ctx, userId, item) ->
             return if item.id != $model.$modelValue.id
-            $model.$modelValue.assigned_to = userId
-            save($model.$modelValue)
+
+            save(userId)
 
         $scope.$watch $attrs.ngModel, (instance) ->
             renderAssignedTo(instance)
@@ -365,18 +326,15 @@ AssignedToDirective = ($rootscope, $confirm, $repo, $loading) ->
         require:"ngModel"
     }
 
-module.directive("tgAssignedTo", ["$rootScope", "$tgConfirm", "$tgRepo", "$tgLoading", AssignedToDirective])
+module.directive("tgAssignedTo", ["$rootScope", "$tgConfirm", "$tgRepo", "$tgLoading", "$tgQqueue", "$tgTemplate", AssignedToDirective])
 
 
 #############################################################################
 ## Block Button directive
 #############################################################################
 
-BlockButtonDirective = ($rootscope, $loading) ->
-    template = """
-      <a href="#" class="button button-gray item-block">Block</a>
-      <a href="#" class="button button-red item-unblock">Unblock</a>
-    """
+BlockButtonDirective = ($rootscope, $loading, $template) ->
+    template = $template.get("common/components/block-button.html")
 
     link = ($scope, $el, $attrs, $model) ->
         isEditable = ->
@@ -417,17 +375,15 @@ BlockButtonDirective = ($rootscope, $loading) ->
         template: template
     }
 
-module.directive("tgBlockButton", ["$rootScope", "$tgLoading", BlockButtonDirective])
+module.directive("tgBlockButton", ["$rootScope", "$tgLoading", "$tgTemplate", BlockButtonDirective])
 
 
 #############################################################################
 ## Delete Button directive
 #############################################################################
 
-DeleteButtonDirective = ($log, $repo, $confirm, $location) ->
-    template = """
-        <a href="" class="button button-red">Delete</a>
-    """ #TODO: i18n
+DeleteButtonDirective = ($log, $repo, $confirm, $location, $template) ->
+    template = $template.get("common/components/delete-button.html")
 
     link = ($scope, $el, $attrs, $model) ->
         if not $attrs.onDeleteGoToUrl
@@ -459,35 +415,26 @@ DeleteButtonDirective = ($log, $repo, $confirm, $location) ->
         template: template
     }
 
-module.directive("tgDeleteButton", ["$log", "$tgRepo", "$tgConfirm", "$tgLocation", DeleteButtonDirective])
+module.directive("tgDeleteButton", ["$log", "$tgRepo", "$tgConfirm", "$tgLocation", "$tgTemplate", DeleteButtonDirective])
 
 
 #############################################################################
 ## Editable subject directive
 #############################################################################
 
-EditableSubjectDirective = ($rootscope, $repo, $confirm, $loading) ->
-    template = """
-        <div class="view-subject">
-            {{ item.subject }}
-            <a class="edit icon icon-edit" href="" title="Edit" />
-        </div>
-        <div class="edit-subject">
-            <input type="text" ng-model="item.subject" data-required="true" data-maxlength="500"/>
-            <span class="save-container">
-                <a class="save icon icon-floppy" href="" title="Save" />
-            </span>
-        </div>
-    """
+EditableSubjectDirective = ($rootscope, $repo, $confirm, $loading, $qqueue, $template) ->
+    template = $template.get("common/components/editable-subject.html")
 
     link = ($scope, $el, $attrs, $model) ->
 
         isEditable = ->
             return $scope.project.my_permissions.indexOf($attrs.requiredPerm) != -1
 
-        save = ->
-            $model.$modelValue.subject = $scope.item.subject
+        save = $qqueue.bindAdd (subject) =>
+            $model.$modelValue.subject = subject
+
             $loading.start($el.find('.save-container'))
+
             promise = $repo.save($model.$modelValue)
             promise.then ->
                 $confirm.notify("success")
@@ -499,6 +446,8 @@ EditableSubjectDirective = ($rootscope, $repo, $confirm, $loading) ->
             promise.finally ->
                 $loading.finish($el.find('.save-container'))
 
+            return promise
+
         $el.click ->
             return if not isEditable()
             $el.find('.edit-subject').show()
@@ -506,13 +455,16 @@ EditableSubjectDirective = ($rootscope, $repo, $confirm, $loading) ->
             $el.find('input').focus()
 
         $el.on "click", ".save", ->
-            save()
+            subject = $scope.item.subject
+            save(subject)
 
         $el.on "keyup", "input", (event) ->
             if event.keyCode == 13
-                save()
+                subject = $scope.item.subject
+                save(subject)
             else if event.keyCode == 27
-                $model.$modelValue.revert()
+                $scope.$apply () => $model.$modelValue.revert()
+
                 $el.find('div.edit-subject').hide()
                 $el.find('div.view-subject').show()
 
@@ -538,42 +490,17 @@ EditableSubjectDirective = ($rootscope, $repo, $confirm, $loading) ->
         template: template
     }
 
-module.directive("tgEditableSubject", ["$rootScope", "$tgRepo", "$tgConfirm", "$tgLoading",
-                                       EditableSubjectDirective])
+module.directive("tgEditableSubject", ["$rootScope", "$tgRepo", "$tgConfirm", "$tgLoading", "$tgQqueue", "$tgTemplate", EditableSubjectDirective])
 
 
 #############################################################################
 ## Editable subject directive
 #############################################################################
 
-EditableDescriptionDirective = ($window, $document, $rootscope, $repo, $confirm, $compile, $loading) ->
-    template = """
-        <div class="view-description">
-            <section class="us-content wysiwyg"
-                     tg-bind-html="item.description_html || noDescriptionMsg"></section>
-            <span class="edit icon icon-edit" href="" title="Edit" />
-        </div>
-        <div class="edit-description">
-            <textarea placeholder="Empty space is so boring... go on be descriptive... A rose by any other name would smell as sweet..."
-                      ng-model="item.description"
-                      tg-markitup="tg-markitup"></textarea>
-            <span class="save-container">
-                <a class="save icon icon-floppy" href="" title="Save" />
-            </span>
-        </div>
-    """ # TODO: i18n
-    noDescriptionMegEditMode = """
-    <p class="no-description editable">
-        Empty space is so boring...
-        go on be descriptive...
-        A rose by any other name would smell as sweet...
-    </p>
-    """ # TODO: i18n
-    noDescriptionMegReadMode = """
-    <p class="no-description">
-        No description yet.
-    </p>
-    """ # TODO: i18n
+EditableDescriptionDirective = ($rootscope, $repo, $confirm, $compile, $loading, $selectedText, $qqueue, $template) ->
+    template = $template.get("common/components/editable-description.html") # TODO: i18n
+    noDescriptionMegEditMode = $template.get("common/components/editable-description-msg-edit-mode.html") # TODO: i18n
+    noDescriptionMegReadMode = $template.get("common/components/editable-description-msg-read-mode.html") # TODO: i18n
 
     link = ($scope, $el, $attrs, $model) ->
         $el.find('.edit-description').hide()
@@ -582,27 +509,8 @@ EditableDescriptionDirective = ($window, $document, $rootscope, $repo, $confirm,
         isEditable = ->
             return $scope.project.my_permissions.indexOf($attrs.requiredPerm) != -1
 
-        getSelectedText = ->
-            if $window.getSelection
-                return $window.getSelection().toString()
-            else if $document.selection
-                return $document.selection.createRange().text
-            return null
-
-        $el.on "mouseup", ".view-description", (event) ->
-            # We want to dettect the a inside the div so we use the target and
-            # not the currentTarget
-            target = angular.element(event.target)
-            return if not isEditable()
-            return if target.is('a')
-            return if getSelectedText()
-
-            $el.find('.edit-description').show()
-            $el.find('.view-description').hide()
-            $el.find('textarea').focus()
-
-        $el.on "click", ".save", ->
-            $model.$modelValue.description = $scope.item.description
+        save = $qqueue.bindAdd (description) =>
+            $model.$modelValue.description = description
 
             $loading.start($el.find('.save-container'))
             promise = $repo.save($model.$modelValue)
@@ -616,9 +524,25 @@ EditableDescriptionDirective = ($window, $document, $rootscope, $repo, $confirm,
             promise.finally ->
                 $loading.finish($el.find('.save-container'))
 
-        $el.on "keyup", "textarea", (event) ->
+        $el.on "mouseup", ".view-description", (event) ->
+            # We want to dettect the a inside the div so we use the target and
+            # not the currentTarget
+            target = angular.element(event.target)
+            return if not isEditable()
+            return if target.is('a')
+            return if $selectedText.get().length
+
+            $el.find('.edit-description').show()
+            $el.find('.view-description').hide()
+            $el.find('textarea').focus()
+
+        $el.on "click", ".save", ->
+            description = $scope.item.description
+            save(description)
+
+        $el.on "keydown", "textarea", (event) ->
             if event.keyCode == 27
-                $scope.item.revert()
+                $scope.$apply () => $scope.item.revert()
                 $el.find('.edit-description').hide()
                 $el.find('.view-description').show()
 
@@ -643,8 +567,8 @@ EditableDescriptionDirective = ($window, $document, $rootscope, $repo, $confirm,
         template: template
     }
 
-module.directive("tgEditableDescription", ["$window", "$document", "$rootScope", "$tgRepo", "$tgConfirm",
-                                           "$compile", "$tgLoading", EditableDescriptionDirective])
+module.directive("tgEditableDescription", ["$rootScope", "$tgRepo", "$tgConfirm",
+                                           "$compile", "$tgLoading", "$selectedText", "$tgQqueue", "$tgTemplate", EditableDescriptionDirective])
 
 
 #############################################################################
@@ -681,13 +605,8 @@ ListItemUsStatusDirective = ->
     return {link:link}
 
 
-ListItemAssignedtoDirective = ->
-    template = _.template("""
-    <figure class="avatar">
-        <img src="<%- imgurl %>" alt="<%- name %>"/>
-        <figcaption><%- name %></figcaption>
-    </figure>
-    """)
+ListItemAssignedtoDirective = ($template) ->
+    template = $template.get("common/components/list-item-assigned-to-avatar.html", true)
 
     link = ($scope, $el, $attrs) ->
         bindOnce $scope, "membersById", (membersById) ->
@@ -703,12 +622,9 @@ ListItemAssignedtoDirective = ->
 
     return {link:link}
 
+module.directive("tgListitemAssignedto", ["$tgTemplate", ListItemAssignedtoDirective])
 
 ListItemPriorityDirective = ->
-    template = """
-    <div class="level"></div>
-    """
-
     link = ($scope, $el, $attrs) ->
         render = (priorityById, issue) ->
             priority = priorityById[issue.priority]
@@ -725,15 +641,12 @@ ListItemPriorityDirective = ->
 
     return {
         link: link
-        template: template
+        templateUrl: "common/components/level.html"
     }
 
+module.directive("tgListitemPriority", ListItemPriorityDirective)
 
 ListItemSeverityDirective = ->
-    template = """
-    <div class="level"></div>
-    """
-
     link = ($scope, $el, $attrs) ->
         render = (severityById, issue) ->
             severity = severityById[issue.severity]
@@ -750,15 +663,11 @@ ListItemSeverityDirective = ->
 
     return {
         link: link
-        template: template
+        templateUrl: "common/components/level.html"
     }
 
 
 ListItemTypeDirective = ->
-    template = """
-    <div class="level"></div>
-    """
-
     link = ($scope, $el, $attrs) ->
         render = (issueTypeById, issue) ->
             type = issueTypeById[issue.type]
@@ -775,7 +684,7 @@ ListItemTypeDirective = ->
 
     return {
         link: link
-        template: template
+        templateUrl: "common/components/level.html"
     }
 
 
@@ -783,10 +692,8 @@ ListItemTypeDirective = ->
 ## Progress bar directive
 #############################################################################
 
-TgProgressBarDirective = ->
-    template = _.template("""
-        <div class="current-progress" style="width: <%- percentage %>%"></div>
-    """)
+TgProgressBarDirective = ($template) ->
+    template = $template.get("common/components/progress-bar.html", true)
 
     render = (el, percentage) ->
         el.html(template({percentage: percentage}))
@@ -804,16 +711,14 @@ TgProgressBarDirective = ->
 
     return {link: link}
 
+module.directive("tgProgressBar", ["$tgTemplate", TgProgressBarDirective])
 
 #############################################################################
 ## Main title directive
 #############################################################################
 
-TgMainTitleDirective = ->
-    template = _.template("""
-        <span class="project-name"><%- projectName %></span>
-        <span class="green"><%- sectionName %></span>
-    """)
+TgMainTitleDirective = ($template) ->
+    template = $template.get("common/components/main-title.html", true)
 
     render = (el, projectName, sectionName) ->
         el.html(template({
@@ -833,13 +738,10 @@ TgMainTitleDirective = ->
 
     return {link: link}
 
+module.directive("tgMainTitle", ["$tgTemplate", TgMainTitleDirective])
 
 module.directive("tgListitemType", ListItemTypeDirective)
 module.directive("tgListitemIssueStatus", ListItemIssueStatusDirective)
-module.directive("tgListitemAssignedto", ListItemAssignedtoDirective)
-module.directive("tgListitemPriority", ListItemPriorityDirective)
 module.directive("tgListitemSeverity", ListItemSeverityDirective)
 module.directive("tgListitemTaskStatus", ListItemTaskStatusDirective)
 module.directive("tgListitemUsStatus", ListItemUsStatusDirective)
-module.directive("tgProgressBar", TgProgressBarDirective)
-module.directive("tgMainTitle", TgMainTitleDirective)

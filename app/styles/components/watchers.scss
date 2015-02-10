@@ -19,9 +19,12 @@
         }
     }
     .watcher-single {
-        @include table-flex(center, center, flex, row, wrap, center);
+        align-content: center;
+        align-items: center;
         background: transparent;
         border-bottom: 1px solid $gray-light;
+        display: flex;
+        justify-content: center;
         padding: .5rem;
         vertical-align: middle;
         &:last-child {
@@ -29,30 +32,30 @@
         }
         &:hover {
             .icon-delete {
-                @include transition(opacity .2s ease-in);
                 opacity: 1;
+                transition: opacity .2s ease-in;
             }
         }
     }
     .watcher-name {
-        @include table-flex-child(8, 0);
         @extend %small;
         color: $grayer;
+        flex-grow: 8;
         margin-left: 1rem;
         position: relative;
     }
     .watcher-avatar {
-        @include table-flex-child(1, 0);
+        flex: 1 0 0;
     }
     .icon-delete {
-        @include transition(all .2s ease-in);
         opacity: 0;
         position: absolute;
         right: .5rem;
         top: 0;
+        transition: all .2s ease-in;
         &:hover {
-            @include transition(color .3s ease-in);
             color: $red;
+            transition: color .3s ease-in;
         }
     }
 }

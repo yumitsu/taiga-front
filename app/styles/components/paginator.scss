@@ -1,25 +1,25 @@
 .paginator {
     margin: 2rem 0;
     ul {
+        display: flex;
         margin-left: 1rem;
     }
     li {
-        display: inline-block;
+        margin-right: .4rem;
     }
     a,
     .active span,
     .dots {
-        @include transition (all .3s linear);
         background: $gray-light;
         color: $white;
-        margin-right: .1rem;
         padding: .5rem 1rem;
+        transition: all .3s linear;
     }
     a {
         &:hover {
-            @include transition (all .3s linear);
             background: $button-gray-hover;
             color: $white;
+            transition: all .3s linear;
         }
     }
     .active {
@@ -37,8 +37,8 @@
     overflow: hidden;
 }
 
-a.v-pagination-next,
-a.v-pagination-previous {
+.v-pagination-next,
+.v-pagination-previous {
     background-color: $button-gray;
     color: $whitish;
     display: block;
@@ -47,7 +47,7 @@ a.v-pagination-previous {
     visibility: hidden;
     width: 100%;
     &:hover {
-        @include transition (background .3s linear);
         background-color: $button-gray / 2;
+        transition: background .3s linear;
     }
 }

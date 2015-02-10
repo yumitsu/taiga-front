@@ -26,6 +26,7 @@ bindOnce = @.taiga.bindOnce
 mixOf = @.taiga.mixOf
 debounceLeading = @.taiga.debounceLeading
 trim = @.taiga.trim
+debounce = @.taiga.debounce
 
 module = angular.module("taigaSearch", [])
 
@@ -73,7 +74,7 @@ class SearchController extends mixOf(taiga.Controller, taiga.PageMixin)
         return defered.promise
 
     loadProject: ->
-        return @rs.projects.get(@scope.projectId).then (project) =>
+        return @rs.projects.getBySlug(@params.pslug).then (project) =>
             @scope.project = project
             @scope.$emit('project:loaded', project)
             @scope.issueStatusById = groupBy(project.issue_statuses, (x) -> x.id)
@@ -87,18 +88,17 @@ class SearchController extends mixOf(taiga.Controller, taiga.PageMixin)
     loadSearchData: (term) ->
         promise = @rs.search.do(@scope.projectId, term).then (data) =>
             @scope.searchResults = data
-            @tgLoader.pageLoaded()
             return data
+
+        promise.finally =>
+            @tgLoader.pageLoaded()
 
         return promise
 
     loadInitialData: ->
-        promise = @repo.resolve({pslug: @params.pslug}).then (data) =>
-            @scope.projectId = data.project
-            return data
-
-        return promise.then(=> @.loadProject())
-                      .then(=> @.loadUsersAndRoles())
+        return @.loadProject().then (project) =>
+            @scope.projectId = project.id
+            @.fillUsersAndRoles(project.users, project.roles)
 
 module.controller("SearchController", SearchController)
 
@@ -111,7 +111,9 @@ SearchBoxDirective = ($lightboxService, $navurls, $location, $route)->
     link = ($scope, $el, $attrs) ->
         project = null
 
-        submit = ->
+        submit = debounce 2000, (event) =>
+            event.preventDefault()
+
             form = $el.find("form").checksley()
             if not form.validate()
                 return
@@ -131,12 +133,7 @@ SearchBoxDirective = ($lightboxService, $navurls, $location, $route)->
             $lightboxService.open($el)
             $el.find("#search-text").val("")
 
-        $el.on "submit", (event) ->
-            submit()
-
-        $el.on "click", ".button-green", (event) ->
-            event.preventDefault()
-            submit()
+        $el.on "submit", "form", submit
 
     return {link:link}
 

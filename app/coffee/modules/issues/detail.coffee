@@ -62,10 +62,12 @@ class IssueDetailController extends mixOf(taiga.Controller, taiga.PageMixin)
         promise.then =>
             @appTitle.set(@scope.issue.subject + " - " + @scope.project.name)
             @.initializeOnDeleteGoToUrl()
-            tgLoader.pageLoaded()
 
         # On Error
         promise.then null, @.onInitialDataError.bind(@)
+
+        # Finally
+        promise.finally tgLoader.pageLoaded
 
     initializeEventHandlers: ->
         @scope.$on "attachment:create", =>
@@ -91,7 +93,8 @@ class IssueDetailController extends mixOf(taiga.Controller, taiga.PageMixin)
            @scope.onDeleteGoToUrl = @navUrls.resolve("project", ctx)
 
     loadProject: ->
-        return @rs.projects.get(@scope.projectId).then (project) =>
+        return @rs.projects.getBySlug(@params.pslug).then (project) =>
+            @scope.projectId = project.id
             @scope.project = project
             @scope.$emit('project:loaded', project)
             @scope.statusList = project.issue_statuses
@@ -106,8 +109,9 @@ class IssueDetailController extends mixOf(taiga.Controller, taiga.PageMixin)
             return project
 
     loadIssue: ->
-        return @rs.issues.get(@scope.projectId, @scope.issueId).then (issue) =>
+        return @rs.issues.getByRef(@scope.projectId, @params.issueref).then (issue) =>
             @scope.issue = issue
+            @scope.issueId = issue.id
             @scope.commentModel = issue
 
             if @scope.issue.neighbors.previous.ref?
@@ -125,19 +129,11 @@ class IssueDetailController extends mixOf(taiga.Controller, taiga.PageMixin)
                 @scope.nextUrl = @navUrls.resolve("project-issues-detail", ctx)
 
     loadInitialData: ->
-        params = {
-            pslug: @params.pslug
-            issueref: @params.issueref
-        }
+        promise = @.loadProject()
+        return promise.then (project) =>
+            @.fillUsersAndRoles(project.users, project.roles)
+            @.loadIssue()
 
-        promise = @repo.resolve(params).then (data) =>
-            @scope.projectId = data.project
-            @scope.issueId = data.issue
-            return data
-
-        return promise.then(=> @.loadProject())
-                      .then(=> @.loadUsersAndRoles())
-                      .then(=> @.loadIssue())
 
 module.controller("IssueDetailController", IssueDetailController)
 
@@ -146,7 +142,7 @@ module.controller("IssueDetailController", IssueDetailController)
 ## Issue status display directive
 #############################################################################
 
-IssueStatusDisplayDirective = ->
+IssueStatusDisplayDirective = ($template)->
     # Display if a Issue is open or closed and its issueboard status.
     #
     # Example:
@@ -156,18 +152,7 @@ IssueStatusDisplayDirective = ->
     #   - Issue object (ng-model)
     #   - scope.statusById object
 
-    template = _.template("""
-    <span>
-        <% if (status.is_closed) { %>
-            Closed
-        <% } else { %>
-            Open
-        <% } %>
-    </span>
-    <span class="us-detail-status" style="color:<%- status.color %>">
-        <%- status.name %>
-    </span>
-    """) # TODO: i18n
+    template = $template.get("common/components/status-display.html", true)
 
     link = ($scope, $el, $attrs) ->
         render = (issue) ->
@@ -188,14 +173,14 @@ IssueStatusDisplayDirective = ->
         require: "ngModel"
     }
 
-module.directive("tgIssueStatusDisplay", IssueStatusDisplayDirective)
+module.directive("tgIssueStatusDisplay", ["$tgTemplate", IssueStatusDisplayDirective])
 
 
 #############################################################################
 ## Issue status button directive
 #############################################################################
 
-IssueStatusButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
+IssueStatusButtonDirective = ($rootScope, $repo, $confirm, $loading, $qqueue, $template) ->
     # Display the status of Issue and you can edit it.
     #
     # Example:
@@ -206,21 +191,7 @@ IssueStatusButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
     #   - scope.statusById object
     #   - $scope.project.my_permissions
 
-    template = _.template("""
-    <div class="status-data <% if(editable){ %>clickable<% }%>">
-        <span class="level" style="background-color:<%- status.color %>"></span>
-        <span class="status-status"><%- status.name %></span>
-        <% if(editable){ %><span class="icon icon-arrow-bottom"></span><% }%>
-        <span class="level-name">status</span>
-
-        <ul class="popover pop-status">
-            <% _.each(statuses, function(st) { %>
-            <li><a href="" class="status" title="<%- st.name %>"
-                   data-status-id="<%- st.id %>"><%- st.name %></a></li>
-            <% }); %>
-        </ul>
-    </div>
-    """) #TODO: i18n
+    template = $template.get("issue/issues-status-button.html", true)
 
     link = ($scope, $el, $attrs, $model) ->
         isEditable = ->
@@ -236,6 +207,27 @@ IssueStatusButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
             })
             $el.html(html)
 
+        save = $qqueue.bindAdd (statusId) =>
+            $.fn.popover().closeAll()
+
+            issue = $model.$modelValue.clone()
+            issue.status = statusId
+
+            onSuccess = ->
+                $confirm.notify("success")
+                $model.$setViewValue(issue)
+                $rootScope.$broadcast("history:reload")
+                $loading.finish($el.find(".level-name"))
+            onError = ->
+                $confirm.notify("error")
+                issue.revert()
+                $model.$setViewValue(issue)
+                $loading.finish($el.find(".level-name"))
+
+            $loading.start($el.find(".level-name"))
+
+            $repo.save(issue).then(onSuccess, onError)
+
         $el.on "click", ".status-data", (event) ->
             event.preventDefault()
             event.stopPropagation()
@@ -250,26 +242,7 @@ IssueStatusButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
 
             target = angular.element(event.currentTarget)
 
-            $.fn.popover().closeAll()
-
-            issue = $model.$modelValue.clone()
-            issue.status = target.data("status-id")
-            $model.$setViewValue(issue)
-
-            $scope.$apply()
-
-            onSuccess = ->
-                $confirm.notify("success")
-                $rootScope.$broadcast("history:reload")
-                $loading.finish($el.find(".level-name"))
-            onError = ->
-                $confirm.notify("error")
-                issue.revert()
-                $model.$setViewValue(issue)
-                $loading.finish($el.find(".level-name"))
-
-            $loading.start($el.find(".level-name"))
-            $repo.save($model.$modelValue).then(onSuccess, onError)
+            save(target.data("status-id"))
 
         $scope.$watch $attrs.ngModel, (issue) ->
             render(issue) if issue
@@ -283,13 +256,13 @@ IssueStatusButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
         require: "ngModel"
     }
 
-module.directive("tgIssueStatusButton", ["$rootScope", "$tgRepo", "$tgConfirm", "$tgLoading", IssueStatusButtonDirective])
+module.directive("tgIssueStatusButton", ["$rootScope", "$tgRepo", "$tgConfirm", "$tgLoading", "$tgQqueue", "$tgTemplate", IssueStatusButtonDirective])
 
 #############################################################################
 ## Issue type button directive
 #############################################################################
 
-IssueTypeButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
+IssueTypeButtonDirective = ($rootScope, $repo, $confirm, $loading, $qqueue, $template) ->
     # Display the type of Issue and you can edit it.
     #
     # Example:
@@ -300,21 +273,7 @@ IssueTypeButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
     #   - scope.typeById object
     #   - $scope.project.my_permissions
 
-    template = _.template("""
-    <div class="type-data <% if(editable){ %>clickable<% }%>">
-        <span class="level" style="background-color:<%- type.color %>"></span>
-        <span class="type-type"><%- type.name %></span>
-        <% if(editable){ %><span class="icon icon-arrow-bottom"></span><% }%>
-        <span class="level-name">type</span>
-
-        <ul class="popover pop-type">
-            <% _.each(typees, function(tp) { %>
-            <li><a href="" class="type" title="<%- tp.name %>"
-                   data-type-id="<%- tp.id %>"><%- tp.name %></a></li>
-            <% }); %>
-        </ul>
-    </div>
-    """) #TODO: i18n
+    template = $template.get("issue/issue-type-button.html", true)
 
     link = ($scope, $el, $attrs, $model) ->
         isEditable = ->
@@ -330,6 +289,26 @@ IssueTypeButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
             })
             $el.html(html)
 
+        save = $qqueue.bindAdd (type) =>
+            $.fn.popover().closeAll()
+            issue = $model.$modelValue.clone()
+            issue.type = type
+
+            onSuccess = ->
+                $confirm.notify("success")
+                $model.$setViewValue(issue)
+                $rootScope.$broadcast("history:reload")
+                $loading.finish($el.find(".level-name"))
+
+            onError = ->
+                $confirm.notify("error")
+                issue.revert()
+                $model.$setViewValue(issue)
+                $loading.finish($el.find(".level-name"))
+            $loading.start($el.find(".level-name"))
+
+            $repo.save(issue).then(onSuccess, onError)
+
         $el.on "click", ".type-data", (event) ->
             event.preventDefault()
             event.stopPropagation()
@@ -343,26 +322,8 @@ IssueTypeButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
             return if not isEditable()
 
             target = angular.element(event.currentTarget)
-
-            $.fn.popover().closeAll()
-
-            issue = $model.$modelValue.clone()
-            issue.type = target.data("type-id")
-            $model.$setViewValue(issue)
-
-            $scope.$apply()
-
-            onSuccess = ->
-                $confirm.notify("success")
-                $rootScope.$broadcast("history:reload")
-                $loading.finish($el.find(".level-name"))
-            onError = ->
-                $confirm.notify("error")
-                issue.revert()
-                $model.$setViewValue(issue)
-                $loading.finish($el.find(".level-name"))
-            $loading.start($el.find(".level-name"))
-            $repo.save($model.$modelValue).then(onSuccess, onError)
+            type = target.data("type-id")
+            save(type)
 
         $scope.$watch $attrs.ngModel, (issue) ->
             render(issue) if issue
@@ -376,14 +337,14 @@ IssueTypeButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
         require: "ngModel"
     }
 
-module.directive("tgIssueTypeButton", ["$rootScope", "$tgRepo", "$tgConfirm", "$tgLoading", IssueTypeButtonDirective])
+module.directive("tgIssueTypeButton", ["$rootScope", "$tgRepo", "$tgConfirm", "$tgLoading", "$tgQqueue", "$tgTemplate", IssueTypeButtonDirective])
 
 
 #############################################################################
 ## Issue severity button directive
 #############################################################################
 
-IssueSeverityButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
+IssueSeverityButtonDirective = ($rootScope, $repo, $confirm, $loading, $qqueue, $template) ->
     # Display the severity of Issue and you can edit it.
     #
     # Example:
@@ -394,21 +355,7 @@ IssueSeverityButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
     #   - scope.severityById object
     #   - $scope.project.my_permissions
 
-    template = _.template("""
-    <div class="severity-data <% if(editable){ %>clickable<% }%>">
-        <span class="level" style="background-color:<%- severity.color %>"></span>
-        <span class="severity-severity"><%- severity.name %></span>
-        <% if(editable){ %><span class="icon icon-arrow-bottom"></span><% }%>
-        <span class="level-name">severity</span>
-
-        <ul class="popover pop-severity">
-            <% _.each(severityes, function(sv) { %>
-            <li><a href="" class="severity" title="<%- sv.name %>"
-                   data-severity-id="<%- sv.id %>"><%- sv.name %></a></li>
-            <% }); %>
-        </ul>
-    </div>
-    """) #TODO: i18n
+    template = $template.get("issue/issue-severity-button.html", true)
 
     link = ($scope, $el, $attrs, $model) ->
         isEditable = ->
@@ -424,6 +371,27 @@ IssueSeverityButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
             })
             $el.html(html)
 
+        save = $qqueue.bindAdd (severity) =>
+            $.fn.popover().closeAll()
+
+            issue = $model.$modelValue.clone()
+            issue.severity = severity
+
+            onSuccess = ->
+                $confirm.notify("success")
+                $model.$setViewValue(issue)
+                $rootScope.$broadcast("history:reload")
+                $loading.finish($el.find(".level-name"))
+            onError = ->
+                $confirm.notify("error")
+                issue.revert()
+                $model.$setViewValue(issue)
+                $loading.finish($el.find(".level-name"))
+
+            $loading.start($el.find(".level-name"))
+
+            $repo.save(issue).then(onSuccess, onError)
+
         $el.on "click", ".severity-data", (event) ->
             event.preventDefault()
             event.stopPropagation()
@@ -437,26 +405,9 @@ IssueSeverityButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
             return if not isEditable()
 
             target = angular.element(event.currentTarget)
+            severity = target.data("severity-id")
 
-            $.fn.popover().closeAll()
-
-            issue = $model.$modelValue.clone()
-            issue.severity = target.data("severity-id")
-            $model.$setViewValue(issue)
-
-            $scope.$apply()
-
-            onSuccess = ->
-                $confirm.notify("success")
-                $rootScope.$broadcast("history:reload")
-                $loading.finish($el.find(".level-name"))
-            onError = ->
-                $confirm.notify("error")
-                issue.revert()
-                $model.$setViewValue(issue)
-                $loading.finish($el.find(".level-name"))
-            $loading.start($el.find(".level-name"))
-            $repo.save($model.$modelValue).then(onSuccess, onError)
+            save(severity)
 
         $scope.$watch $attrs.ngModel, (issue) ->
             render(issue) if issue
@@ -470,14 +421,14 @@ IssueSeverityButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
         require: "ngModel"
     }
 
-module.directive("tgIssueSeverityButton", ["$rootScope", "$tgRepo", "$tgConfirm", "$tgLoading", IssueSeverityButtonDirective])
+module.directive("tgIssueSeverityButton", ["$rootScope", "$tgRepo", "$tgConfirm", "$tgLoading", "$tgQqueue", "$tgTemplate", IssueSeverityButtonDirective])
 
 
 #############################################################################
 ## Issue priority button directive
 #############################################################################
 
-IssuePriorityButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
+IssuePriorityButtonDirective = ($rootScope, $repo, $confirm, $loading, $qqueue, $template) ->
     # Display the priority of Issue and you can edit it.
     #
     # Example:
@@ -488,21 +439,7 @@ IssuePriorityButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
     #   - scope.priorityById object
     #   - $scope.project.my_permissions
 
-    template = _.template("""
-    <div class="priority-data <% if(editable){ %>clickable<% }%>">
-        <span class="level" style="background-color:<%- priority.color %>"></span>
-        <span class="priority-priority"><%- priority.name %></span>
-        <% if(editable){ %><span class="icon icon-arrow-bottom"></span><% }%>
-        <span class="level-name">priority</span>
-
-        <ul class="popover pop-priority">
-            <% _.each(priorityes, function(pr) { %>
-            <li><a href="" class="priority" title="<%- pr.name %>"
-                   data-priority-id="<%- pr.id %>"><%- pr.name %></a></li>
-            <% }); %>
-        </ul>
-    </div>
-    """) #TODO: i18n
+    template = $template.get("issue/issue-priority-button.html", true)
 
     link = ($scope, $el, $attrs, $model) ->
         isEditable = ->
@@ -518,6 +455,27 @@ IssuePriorityButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
             })
             $el.html(html)
 
+        save = $qqueue.bindAdd (priority) =>
+            $.fn.popover().closeAll()
+
+            issue = $model.$modelValue.clone()
+            issue.priority = priority
+
+            onSuccess = ->
+                $confirm.notify("success")
+                $model.$setViewValue(issue)
+                $rootScope.$broadcast("history:reload")
+                $loading.finish($el.find(".level-name"))
+            onError = ->
+                $confirm.notify("error")
+                issue.revert()
+                $model.$setViewValue(issue)
+                $loading.finish($el.find(".level-name"))
+
+            $loading.start($el.find(".level-name"))
+
+            $repo.save(issue).then(onSuccess, onError)
+
         $el.on "click", ".priority-data", (event) ->
             event.preventDefault()
             event.stopPropagation()
@@ -531,26 +489,9 @@ IssuePriorityButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
             return if not isEditable()
 
             target = angular.element(event.currentTarget)
+            priority = target.data("priority-id")
 
-            $.fn.popover().closeAll()
-
-            issue = $model.$modelValue.clone()
-            issue.priority = target.data("priority-id")
-            $model.$setViewValue(issue)
-
-            $scope.$apply()
-
-            onSuccess = ->
-                $confirm.notify("success")
-                $rootScope.$broadcast("history:reload")
-                $loading.finish($el.find(".level-name"))
-            onError = ->
-                $confirm.notify("error")
-                issue.revert()
-                $model.$setViewValue(issue)
-                $loading.finish($el.find(".level-name"))
-            $loading.start($el.find(".level-name"))
-            $repo.save($model.$modelValue).then(onSuccess, onError)
+            save(priority)
 
         $scope.$watch $attrs.ngModel, (issue) ->
             render(issue) if issue
@@ -564,21 +505,39 @@ IssuePriorityButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
         require: "ngModel"
     }
 
-module.directive("tgIssuePriorityButton", ["$rootScope", "$tgRepo", "$tgConfirm", "$tgLoading", IssuePriorityButtonDirective])
+module.directive("tgIssuePriorityButton", ["$rootScope", "$tgRepo", "$tgConfirm", "$tgLoading", "$tgQqueue", "$tgTemplate", IssuePriorityButtonDirective])
 
 
 #############################################################################
 ## Promote Issue to US button directive
 #############################################################################
 
-PromoteIssueToUsButtonDirective = ($rootScope, $repo, $confirm) ->
-    template = _.template("""
-        <a class="button button-gray editable" tg-check-permission="add_us">
-            Promote to User Story
-        </a>
-    """)  # TODO: i18n
-
+PromoteIssueToUsButtonDirective = ($rootScope, $repo, $confirm, $qqueue) ->
     link = ($scope, $el, $attrs, $model) ->
+
+        save = $qqueue.bindAdd (issue, finish) =>
+            data = {
+                generated_from_issue: issue.id
+                project: issue.project,
+                subject: issue.subject
+                description: issue.description
+                tags: issue.tags
+                is_blocked: issue.is_blocked
+                blocked_note: issue.blocked_note
+            }
+
+            onSuccess = ->
+                finish()
+                $confirm.notify("success")
+                $rootScope.$broadcast("promote-issue-to-us:success")
+
+            onError = ->
+                finish(false)
+                $confirm.notify("error")
+
+            $repo.create("userstories", data).then(onSuccess, onError)
+
+
         $el.on "click", "a", (event) ->
             event.preventDefault()
             issue = $model.$modelValue
@@ -588,26 +547,8 @@ PromoteIssueToUsButtonDirective = ($rootScope, $repo, $confirm) ->
             subtitle = issue.subject
 
             $confirm.ask(title, subtitle, message).then (finish) =>
-                data = {
-                    generated_from_issue: issue.id
-                    project: issue.project,
-                    subject: issue.subject
-                    description: issue.description
-                    tags: issue.tags
-                    is_blocked: issue.is_blocked
-                    blocked_note: issue.blocked_note
-                }
+                save(issue, finish)
 
-                onSuccess = ->
-                    finish()
-                    $confirm.notify("success")
-                    $rootScope.$broadcast("promote-issue-to-us:success")
-
-                onError = ->
-                    finish(false)
-                    $confirm.notify("error")
-
-                $repo.create("userstories", data).then(onSuccess, onError)
 
         $scope.$on "$destroy", ->
             $el.off()
@@ -615,9 +556,9 @@ PromoteIssueToUsButtonDirective = ($rootScope, $repo, $confirm) ->
     return {
         restrict: "AE"
         require: "ngModel"
-        template: template
+        templateUrl: "issue/promote-issue-to-us-button.html"
         link: link
     }
 
-module.directive("tgPromoteIssueToUsButton", ["$rootScope", "$tgRepo", "$tgConfirm",
+module.directive("tgPromoteIssueToUsButton", ["$rootScope", "$tgRepo", "$tgConfirm", "$tgQqueue",
                                               PromoteIssueToUsButtonDirective])

@@ -3,15 +3,15 @@
     .us-title {
         @extend %large;
         @extend %text;
-        @include transition(all .2s linear);
         background: $whitish;
         margin-bottom: .5rem;
         padding: 1rem;
         position: relative;
+        transition: all .2s linear;
         &.blocked {
             background: $red;
+            transition: all .2s linear;
             vertical-align: middle;
-            @include transition(all .2s linear);
             .us-title-text,
             input {
                 margin-bottom: .5rem;
@@ -20,48 +20,53 @@
             .us-name,
             .us-related-task {
                 color: $white;
-                a {
-                    @include transition(color .3s linear);
-                    color: $white;
-                    &:hover {
-                        color: $red-light;
-                    }
-                }
+            }
+            a {
+                color: $white;
+                transition: color .3s linear;
+            }
+            a:hover {
+                color: $red-light;
             }
             .unblock {
                 @extend %bold;
                 color: $white;
                 float: right;
-                &:hover {
-                    @include transition(color .3s linear);
-                    color: $red-light;
-                }
             }
-            .issue-nav {
-                a {
-                    color: $white;
-                }
+            .unblock:hover {
+                color: $red-light;
+                transition: color .3s linear;
             }
         }
         p {
             margin-bottom: 0;
         }
         .us-edit-name-inner {
-            @include table-flex();
+            display: flex;
+        }
+        .edit-subject {
+            align-content: center;
+            align-items: center;
+            display: flex;
         }
         input {
             background: $white;
-            @include table-flex-child(1, 90%, 0);
+            flex-grow: 9;
+        }
+        .save-container {
+            flex-grow: 1;
         }
         .us-title-text {
+            align-content: center;
+            align-items: center;
             display: flex;
             margin-bottom: 0;
             max-width: 94%;
-            &:hover {
-                .icon-edit {
-                    @include transition(opacity .3s linear);
-                    opacity: 1;
-                }
+        }
+        .us-title-text:hover {
+            .icon-edit {
+                opacity: 1;
+                transition: opacity .3s linear;
             }
         }
         .us-number {
@@ -81,8 +86,7 @@
             width: 100%;
         }
         .icon-edit,
-        .icon-floppy,
-        .icon-spinner {
+        .icon-floppy {
             @extend %large;
             color: $gray-light;
             margin-left: .5rem;
@@ -95,15 +99,15 @@
             color: $gray-light;
             margin-top: .5rem;
             a {
-                @include transition(color .3s linear);
                 border-left: 1px solid $gray-light;
                 padding: 0 .2rem;
-                &:hover {
-                    color: $green-taiga;
-                }
-                &:first-child {
-                    border: 0;
-                }
+                transition: color .3s linear;
+            }
+            a:hover {
+                color: $green-taiga;
+            }
+            a:first-child {
+                border: 0;
             }
         }
         .block-desc-container {
@@ -119,6 +123,11 @@
             display: inline-block;
             margin-right: 5rem;
         }
+    }
+    .loading-spinner {
+        @extend %loading-spinner;
+        max-height: 1.5rem;
+        max-width: 1.5rem;
     }
 }
 
@@ -155,16 +164,16 @@
     &:hover {
         .view-description {
             .edit {
-                @include transition(all .2s linear);
                 opacity: 1;
                 top: -1.5rem;
+                transition: all .2s linear;
             }
             .editable {
                 background: $whitish;
                 cursor: pointer;
-                .no-description {
-                    color: $grayer;
-                }
+            }
+            .no-description {
+                color: $grayer;
             }
         }
     }
@@ -177,20 +186,19 @@
     textarea {
         background: $white;
         height: 10rem;
-        margin-bottom: 2rem;
     }
     .save-container {
         position: absolute;
         right: 1rem;
         top: .2rem;
-        .save {
-            color: $blackish;
-            opacity: .6;
-            top: 0;
-        }
         &:hover {
-            @include transition(opacity .2s linear);
             opacity: .3;
+            transition: opacity .2s linear;
+        }
+        .loading-spinner {
+            @extend %loading-spinner;
+            max-height: 1.5rem;
+            max-width: 1.5rem;
         }
     }
     .edit {
@@ -198,24 +206,25 @@
     }
     .view-description {
         .edit {
-            @include transition(all .2s linear);
             background: $whitish;
             left: 0;
             opacity: 0;
             padding: .2rem .5rem;
             position: absolute;
             top: 0;
+            transition: all .2s linear;
         }
     }
     .edit-description {
+        margin-bottom: 2rem;
         .save {
             top: .4rem;
         }
         .edit {
-            @include transition(all .2s linear);
             position: absolute;
             right: 2.5rem;
             top: .4rem;
+            transition: all .2s linear;
         }
     }
 }
@@ -253,22 +262,29 @@
 }
 
 .points-per-role {
-    @include table-flex();
+    display: flex;
+    flex-wrap: wrap;
     position: relative;
     > li {
-        @include table-flex-child(1, 18%, 0);
-        @include transition(color .3s linear);
-        border-right: 1px solid rgba($grayer, .3);
+        background: rgba($gray-light, .1);
+        border-radius: 2px;
         color: rgba($grayer, .3);
-        display: inline-block;
-        margin: .5rem .1rem;
+        flex-basis: 80px;
+        flex-grow: 1;
+        flex-shrink: 0;
+        margin: .1rem;
+        max-width: 50%;
+        padding: .5rem 0 .1rem;
         position: relative;
         text-align: center;
+        transition: color .3s linear;
         &.active {
-            color: rgba($green-taiga, 1);
+            background: rgba($fresh-taiga, .9);
+            color: $whitish;
         }
         &:first-child {
-            opacity: 1;
+            background: rgba($grayer, .5);
+            color: $whitish;
         }
         &:last-child {
             border: 0;
@@ -278,18 +294,18 @@
         @extend %xlarge;
         @extend %title;
         display: block;
+        margin-bottom: .3rem;
         text-align: center;
     }
     .role {
+        @extend %small;
+        @include ellipsis(90%);
         display: inline-block;
-        max-width: 90%;
-        overflow: hidden;
+        line-height: 1rem;
         text-align: center;
-        text-overflow: ellipsis;
-        white-space: nowrap;
     }
     .popover {
-        @include popover(200px, $top: 105%, $left: 35%, $arrow-width: 10px, $arrow-top: -5px, $arrow-left: 10px);
+        @include popover(200px, $top: 105%, $left: 35%, $arrow-width: 10px, $arrow-top: -5px, $arrow-left: 10px, $arrow-height: 10px);
         li {
             display: inline-block;
             width: 23%;
@@ -304,7 +320,7 @@
             }
         }
         &.fix {
-            @include popover(200px, $top: 105%, $left: -160px, $arrow-width: 10px, $arrow-top: -5px, $arrow-left: 90%);
+            @include popover(200px, $top: 105%, $left: -160px, $arrow-width: 10px, $arrow-top: -5px, $arrow-left: 90%, $arrow-height: 10px);
         }
     }
 }
@@ -318,15 +334,15 @@
             margin: 0;
         }
         div {
-            @include transition(background .2s ease-in);
             background: darken($whitish, 5%);
             padding: .5rem;
             padding-right: 1rem;
+            transition: background .2s ease-in;
         }
         .clickable {
             &:hover {
-                @include transition(background .2s ease-in);
                 background: darken($whitish, 10%);
+                transition: background .2s ease-in;
             }
         }
     }
@@ -338,10 +354,6 @@
     .level-name {
         color: darken($whitish, 20%);
         float: right;
-        &.loading span {
-            @include animation (loading .5s linear);
-            @include animation (spin 1s linear infinite);
-        }
     }
 }
 
@@ -406,6 +418,9 @@
                 background: $red;
             }
         }
+    }
+    .loading-spinner {
+        @extend %loading-spinner;
     }
 }
 

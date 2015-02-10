@@ -2,6 +2,11 @@
 
 ![Kaleidos Project](http://kaleidos.net/static/img/badge.png "Kaleidos Project")
 
+## Get the compiled version ##
+
+You can get the compiled version of this code in the
+[taiga-front-dist](http://github.com/taigaio/taiga-front-dist) repository
+
 ## Setup initial environment ##
 
 Install requirements:
@@ -31,6 +36,7 @@ $ gulp
 
 And go in your browser to: http://localhost:9001/
 
+All the information about the different installation methods (production, development, vagrant, docker...) can be found here http://taigaio.github.io/taiga-doc/dist/#_installation_guide. 
 
 ## Community ##
 

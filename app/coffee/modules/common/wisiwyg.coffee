@@ -28,17 +28,8 @@ module = angular.module("taigaCommon")
 #############################################################################
 ## WYSIWYG markitup editor directive
 #############################################################################
-tgMarkitupDirective = ($rootscope, $rs, $tr) ->
-    previewTemplate = _.template("""
-    <div class="preview">
-        <div class="actions">
-            <a href="#" title="Edit" class="icon icon-edit edit"></a>
-        </div>
-        <div class="content wysiwyg">
-            <%= data %>
-        </div>
-    </div>
-    """)
+tgMarkitupDirective = ($rootscope, $rs, $tr, $selectedText, $template) ->
+    previewTemplate = $template.get("common/wysiwyg/wysiwyg-markitup-preview.html", true)
 
     link = ($scope, $el, $attrs, $model) ->
         element = angular.element($el)
@@ -61,10 +52,16 @@ tgMarkitupDirective = ($rootscope, $rs, $tr) ->
                 markdownDomNode.append(previewTemplate({data: data.data}))
                 markItUpDomNode.hide()
 
-                # FIXME: Really `.parents()` is need? seems `.closest`
-                # function is better aproach for it
-                element.parents(".markdown").one "click", ".preview", (event) ->
+                markdown = element.closest(".markdown")
+
+                markdown.on "mouseup.preview", ".preview", (event) ->
                     event.preventDefault()
+                    target = angular.element(event.target)
+
+                    if !target.is('a') and $selectedText.get().length
+                        return
+
+                    markdown.off(".preview")
                     closePreviewMode()
 
         markdownCaretPositon = false
@@ -277,4 +274,4 @@ tgMarkitupDirective = ($rootscope, $rs, $tr) ->
 
     return {link:link, require:"ngModel"}
 
-module.directive("tgMarkitup", ["$rootScope", "$tgResources", "$tgI18n", tgMarkitupDirective])
+module.directive("tgMarkitup", ["$rootScope", "$tgResources", "$tgI18n", "$selectedText", "$tgTemplate", tgMarkitupDirective])

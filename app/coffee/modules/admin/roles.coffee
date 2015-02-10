@@ -24,6 +24,7 @@ taiga = @.taiga
 mixOf = @.taiga.mixOf
 bindOnce = @.taiga.bindOnce
 debounce = @.taiga.debounce
+bindMethods = @.taiga.bindMethods
 
 module = angular.module("taigaAdmin")
 
@@ -47,7 +48,7 @@ class RolesController extends mixOf(taiga.Controller, taiga.PageMixin, taiga.Fil
     ]
 
     constructor: (@scope, @rootscope, @repo, @confirm, @rs, @params, @q, @location, @navUrls, @appTitle) ->
-        _.bindAll(@)
+        bindMethods(@)
 
         @scope.sectionName = "Permissions" #i18n
         @scope.project = {}
@@ -147,6 +148,7 @@ EditRoleDirective = ($repo, $confirm) ->
         $el.on "click", "a.icon-edit", ->
             toggleView()
             $el.find("input").focus()
+            $el.find("input").val($scope.role.name)
 
         $el.on "click", "a.save", submit
 
@@ -251,7 +253,8 @@ RolePermissionsDirective = ($rootscope, $repo, $confirm) ->
         <div class="category-items">
             <div class="items-container">
             <% _.each(category.permissions, function(permission) { %>
-                <div class="category-item" data-id="<%- permission.key %>"> <%- permission.description %>
+                <div class="category-item" data-id="<%- permission.key %>">
+                    <span><%- permission.description %></span>
                     <div class="check">
                         <input type="checkbox" <% if(permission.active) { %>checked="checked"<% } %>/>
                         <div></div>

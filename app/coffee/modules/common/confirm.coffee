@@ -23,7 +23,7 @@ taiga = @.taiga
 timeout = @.taiga.timeout
 cancelTimeout = @.taiga.cancelTimeout
 debounce = @.taiga.debounce
-
+bindMethods = @.taiga.bindMethods
 
 NOTIFICATION_MSG = {
     "success":
@@ -42,7 +42,7 @@ class ConfirmService extends taiga.Service
     @.$inject = ["$q", "lightboxService", "$tgLoading"]
 
     constructor: (@q, @lightboxService, @loading) ->
-        _.bindAll(@)
+        bindMethods(@)
 
     hide: (el)->
         if el
@@ -148,11 +148,12 @@ class ConfirmService extends taiga.Service
 
         return defered.promise
 
-    success: (message) ->
+    success: (title, message) ->
         el = angular.element(".lightbox-generic-success")
 
         # Render content
-        el.find("h2.title").html(message)
+        el.find("h2.title").html(title) if title
+        el.find("p.message").html(message) if message
         defered = @q.defer()
 
         # Assign event handlers
@@ -170,13 +171,39 @@ class ConfirmService extends taiga.Service
 
         return defered.promise
 
-    notify: (type, message, title) ->
+    loader: (title, message) ->
+        el = angular.element(".lightbox-generic-loading")
+
+        # Render content
+        el.find("h2.title").html(title) if title
+        el.find("p.message").html(message) if message
+
+        return {
+            start: => @lightboxService.open(el)
+            stop: => @lightboxService.close(el)
+            update: (status, title, message, percent) =>
+                el.find("h2.title").html(title) if title
+                el.find("p.message").html(message) if message
+
+                if percent
+                    el.find(".spin").addClass("hidden")
+                    el.find(".progress-bar-wrapper").removeClass("hidden")
+                    el.find(".progress-bar-wrapper > .bar").width(percent + '%')
+                    el.find(".progress-bar-wrapper > span").html(percent + '%').css('left', (percent - 9) + '%' )
+                else
+                    el.find(".spin").removeClass("hidden")
+                    el.find(".progress-bar-wrapper").addClass("hidden")
+        }
+
+    notify: (type, message, title, time) ->
         # NOTE: Typesi are: error, success, light-error
         #       See partials/components/notification-message.jade)
         #       Add default texts to NOTIFICATION_MSG for new notification types
 
         selector = ".notification-message-#{type}"
         el = angular.element(selector)
+
+        return if el.hasClass("active")
 
         if title
             el.find("h4").html(title)
@@ -200,7 +227,8 @@ class ConfirmService extends taiga.Service
         if @.tsem
             cancelTimeout(@.tsem)
 
-        time = if type == 'error' or type == 'light-error' then 3500 else 1500
+        if !time
+            time = if type == 'error' or type == 'light-error' then 3500 else 1500
 
         @.tsem = timeout time, =>
             body.find(selector)

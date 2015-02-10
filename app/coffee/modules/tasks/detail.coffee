@@ -58,9 +58,10 @@ class TaskDetailController extends mixOf(taiga.Controller, taiga.PageMixin)
         promise.then () =>
             @appTitle.set(@scope.task.subject + " - " + @scope.project.name)
             @.initializeOnDeleteGoToUrl()
-            tgLoader.pageLoaded()
 
         promise.then null, @.onInitialDataError.bind(@)
+
+        promise.finally tgLoader.pageLoaded
 
     initializeEventHandlers: ->
         @scope.$on "attachment:create", =>
@@ -87,7 +88,8 @@ class TaskDetailController extends mixOf(taiga.Controller, taiga.PageMixin)
                 @scope.onDeleteGoToUrl = @navUrls.resolve("project-userstories-detail", ctx)
 
     loadProject: ->
-        return @rs.projects.get(@scope.projectId).then (project) =>
+        return @rs.projects.getBySlug(@params.pslug).then (project) =>
+            @scope.projectId = project.id
             @scope.project = project
             @scope.$emit('project:loaded', project)
             @scope.statusList = project.task_statuses
@@ -96,8 +98,9 @@ class TaskDetailController extends mixOf(taiga.Controller, taiga.PageMixin)
             return project
 
     loadTask: ->
-        return @rs.tasks.get(@scope.projectId, @scope.taskId).then (task) =>
+        return @rs.tasks.getByRef(@scope.projectId, @params.taskref).then (task) =>
             @scope.task = task
+            @scope.taskId = task.id
             @scope.commentModel = task
 
             if @scope.task.neighbors.previous.ref?
@@ -128,20 +131,10 @@ class TaskDetailController extends mixOf(taiga.Controller, taiga.PageMixin)
                 return us
 
     loadInitialData: ->
-        params = {
-            pslug: @params.pslug
-            taskref: @params.taskref
-        }
-
-        promise = @repo.resolve(params).then (data) =>
-            @scope.projectId = data.project
-            @scope.taskId = data.task
-            return data
-
-        return promise.then(=> @.loadProject())
-                      .then(=> @.loadUsersAndRoles())
-                      .then(=> @.loadTask().then(=> @q.all([@.loadUserStory(),
-                                                            @.loadSprint()])))
+        promise = @.loadProject()
+        return promise.then (project) =>
+            @.fillUsersAndRoles(project.users, project.roles)
+            @.loadTask().then(=> @q.all([@.loadSprint(), @.loadUserStory()]))
 
 module.controller("TaskDetailController", TaskDetailController)
 
@@ -150,7 +143,7 @@ module.controller("TaskDetailController", TaskDetailController)
 ## Task status display directive
 #############################################################################
 
-TaskStatusDisplayDirective = ->
+TaskStatusDisplayDirective = ($template) ->
     # Display if a Task is open or closed and its taskboard status.
     #
     # Example:
@@ -160,18 +153,7 @@ TaskStatusDisplayDirective = ->
     #   - Task object (ng-model)
     #   - scope.statusById object
 
-    template = _.template("""
-    <span>
-        <% if (status.is_closed) { %>
-            Closed
-        <% } else { %>
-            Open
-        <% } %>
-    </span>
-    <span class="us-detail-status" style="color:<%- status.color %>">
-        <%- status.name %>
-    </span>
-    """) # TODO: i18n
+    template = $template.get("common/components/status-display.html", true)
 
     link = ($scope, $el, $attrs) ->
         render = (task) ->
@@ -192,14 +174,14 @@ TaskStatusDisplayDirective = ->
         require: "ngModel"
     }
 
-module.directive("tgTaskStatusDisplay", TaskStatusDisplayDirective)
+module.directive("tgTaskStatusDisplay", ["$tgTemplate", TaskStatusDisplayDirective])
 
 
 #############################################################################
 ## Task status button directive
 #############################################################################
 
-TaskStatusButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
+TaskStatusButtonDirective = ($rootScope, $repo, $confirm, $loading, $qqueue) ->
     # Display the status of Task and you can edit it.
     #
     # Example:
@@ -240,6 +222,26 @@ TaskStatusButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
             })
             $el.html(html)
 
+        save = $qqueue.bindAdd (status) =>
+            task = $model.$modelValue.clone()
+            task.status = status
+
+            $model.$setViewValue(task)
+
+            onSuccess = ->
+                $confirm.notify("success")
+                $rootScope.$broadcast("history:reload")
+                $loading.finish($el.find(".level-name"))
+
+            onError = ->
+                $confirm.notify("error")
+                task.revert()
+                $model.$setViewValue(task)
+                $loading.finish($el.find(".level-name"))
+
+            $loading.start($el.find(".level-name"))
+            $repo.save($model.$modelValue).then(onSuccess, onError)
+
         $el.on "click", ".status-data", (event) ->
             event.preventDefault()
             event.stopPropagation()
@@ -256,25 +258,7 @@ TaskStatusButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
 
             $.fn.popover().closeAll()
 
-            task = $model.$modelValue.clone()
-            task.status = target.data("status-id")
-            $model.$setViewValue(task)
-
-            $scope.$apply()
-
-            onSuccess = ->
-                $confirm.notify("success")
-                $rootScope.$broadcast("history:reload")
-                $loading.finish($el.find(".level-name"))
-
-            onError = ->
-                $confirm.notify("error")
-                task.revert()
-                $model.$setViewValue(task)
-                $loading.finish($el.find(".level-name"))
-
-            $loading.start($el.find(".level-name"))
-            $repo.save($model.$modelValue).then(onSuccess, onError)
+            save(target.data("status-id"))
 
         $scope.$watch $attrs.ngModel, (task) ->
             render(task) if task
@@ -288,11 +272,11 @@ TaskStatusButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
         require: "ngModel"
     }
 
-module.directive("tgTaskStatusButton", ["$rootScope", "$tgRepo", "$tgConfirm", "$tgLoading",
+module.directive("tgTaskStatusButton", ["$rootScope", "$tgRepo", "$tgConfirm", "$tgLoading", "$tgQqueue",
                                         TaskStatusButtonDirective])
 
 
-TaskIsIocaineButtonDirective = ($rootscope, $tgrepo, $confirm, $loading) ->
+TaskIsIocaineButtonDirective = ($rootscope, $tgrepo, $confirm, $loading, $qqueue) ->
     template = _.template("""
       <fieldset title="Feeling a bit overwhelmed by a task? Make sure others know about it by clicking on Iocaine when editing a task. It's possible to become immune to this (fictional) deadly poison by consuming small amounts over time just as it's possible to get better at what you do by occasionally taking on extra challenges!">
         <label for="is-iocaine"
@@ -319,15 +303,15 @@ TaskIsIocaineButtonDirective = ($rootscope, $tgrepo, $confirm, $loading) ->
             html = template(ctx)
             $el.html(html)
 
-        $el.on "click", ".is-iocaine", (event) ->
-            return if not isEditable()
-
+        save = $qqueue.bindAdd (is_iocaine) =>
             task = $model.$modelValue.clone()
-            task.is_iocaine = not task.is_iocaine
+            task.is_iocaine = is_iocaine
+
             $model.$setViewValue(task)
             $loading.start($el.find('label'))
 
-            promise = $tgrepo.save($model.$modelValue)
+            promise = $tgrepo.save(task)
+
             promise.then ->
                 $confirm.notify("success")
                 $rootscope.$broadcast("history:reload")
@@ -339,6 +323,12 @@ TaskIsIocaineButtonDirective = ($rootscope, $tgrepo, $confirm, $loading) ->
 
             promise.finally ->
                 $loading.finish($el.find('label'))
+
+        $el.on "click", ".is-iocaine", (event) ->
+            return if not isEditable()
+
+            is_iocaine = not $model.$modelValue.is_iocaine
+            save(is_iocaine)
 
         $scope.$watch $attrs.ngModel, (task) ->
             render(task) if task
@@ -352,4 +342,4 @@ TaskIsIocaineButtonDirective = ($rootscope, $tgrepo, $confirm, $loading) ->
         require: "ngModel"
     }
 
-module.directive("tgTaskIsIocaineButton", ["$rootScope", "$tgRepo", "$tgConfirm", "$tgLoading", TaskIsIocaineButtonDirective])
+module.directive("tgTaskIsIocaineButton", ["$rootScope", "$tgRepo", "$tgConfirm", "$tgLoading", "$tgQqueue", TaskIsIocaineButtonDirective])

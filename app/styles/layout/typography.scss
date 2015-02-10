@@ -56,8 +56,8 @@ h1 {
         color: $green-taiga;
     }
     .date {
-        color: $gray-light;
         @include ellipsis(500px);
+        color: $gray-light;
     }
 }
 
@@ -93,8 +93,8 @@ a:visited {
     color: $grayer;
     text-decoration: none;
     &:hover {
-        @include transition (color .3s linear);
         color: $green-taiga;
+        transition: color .3s linear;
     }
 }
 
@@ -126,120 +126,159 @@ a:visited {
     text-transform: none !important;
 }
 
-.icon-backlog:before {
+.icon-bug:before {
     content: 'a';
 }
-.icon-issues:before {
+.icon-copy:before {
     content: 'b';
 }
-.icon-kanban:before {
+.icon-minimize:before {
     content: 'c';
 }
-.icon-search:before {
+.icon-maximize:before {
     content: 'd';
 }
-.icon-video:before {
+.icon-comment:before {
     content: 'e';
 }
-.icon-wiki:before {
+.icon-plus:before {
     content: 'f';
 }
-.icon-settings:before {
+.icon-attachments:before {
     content: 'g';
 }
-.icon-move:before {
+.icon-edit:before {
     content: 'h';
 }
-.icon-filter:before {
+.icon-documents:before {
     content: 'i';
 }
-.icon-arrow-up:before {
+.icon-delete:before {
     content: 'j';
 }
-.icon-arrow-right:before {
+.icon-arrow-bottom:before {
     content: 'k';
 }
 .icon-arrow-left:before {
     content: 'l';
 }
-.icon-arrow-bottom:before {
+.icon-arrow-right:before {
     content: 'm';
 }
-.icon-edit:before {
+.icon-arrow-up:before {
     content: 'n';
 }
-.icon-delete:before {
+.icon-briefcase:before {
     content: 'o';
 }
-.icon-iocaine:before {
+.icon-caret-down:before {
     content: 'p';
 }
-.icon-drag-h:before {
+.icon-caret-up:before {
     content: 'q';
 }
-.icon-drag-v:before {
+.icon-check-square:before {
     content: 'r';
 }
-.icon-document:before {
+.icon-notification-error:before {
     content: 's';
 }
-.icon-plus:before {
+.icon-settings:before {
     content: 't';
 }
-.icon-reload:before {
+.icon-document:before {
     content: 'u';
 }
 .icon-warning:before {
     content: 'v';
 }
-.icon-notification-error:before {
+.icon-move:before {
     content: 'w';
 }
-.icon-github:before {
+.icon-drag-h:before {
     content: 'x';
 }
-.icon-check-square:before {
+.icon-drag-v:before {
     content: 'y';
 }
-.icon-warning-alt:before {
+.icon-filter:before {
     content: 'z';
 }
-.icon-floppy:before {
+.icon-github:before {
     content: 'A';
 }
-.icon-comment:before {
+.icon-help:before {
     content: 'B';
 }
-.icon-documents:before {
+.icon-reload:before {
     content: 'C';
 }
-.icon-attachments:before {
+.icon-writer:before {
     content: 'D';
 }
-.icon-caret-up:before {
+.icon-stats:before {
     content: 'E';
 }
-.icon-caret-down:before {
+.icon-floppy:before {
     content: 'F';
 }
-.icon-bulk:before {
+.icon-idea:before {
     content: 'G';
 }
-.icon-idea:before {
+.icon-warning-alt:before {
     content: 'H';
 }
-.icon-spinner:before {
+.icon-video:before {
     content: 'I';
 }
-.icon-minimize:before {
-    content: 'J';
-}
-.icon-maximize:before {
+.icon-bulk:before {
     content: 'K';
 }
-.icon-stats:before {
+.icon-vunfold:before {
+    content: 'M';
+}
+.icon-tasks:before {
+    content: 'O';
+}
+.icon-kanban:before {
+    content: 'P';
+}
+.icon-search:before {
+    content: 'Q';
+}
+.icon-wiki:before {
     content: 'L';
 }
-.icon-copy:before {
-    content: 'M';
+.icon-team:before {
+    content: 'T';
+}
+.icon-spinner:before {
+    content: 'J';
+}
+.icon-vfold:before {
+    content: 'N';
+}
+.icon-issues:before {
+    content: 'U';
+}
+.icon-backlog:before {
+    content: 'R';
+}
+.icon-iocaine:before {
+    content: 'S';
+}
+.icon-closed-eye:before {
+    content: 'V';
+}
+.icon-open-eye:before {
+    content: 'W';
+}
+.icon-archive:before {
+    content: 'X';
+}
+.icon-capslock:before {
+    content: 'Y';
+}
+.icon-upload:before {
+    content: 'Z';
 }

@@ -42,6 +42,7 @@ urls = {
     "userstories-restore": "/userstories/%s/restore"
     "tasks": "/tasks"
     "bulk-create-tasks": "/tasks/bulk_create"
+    "bulk-update-task-taskboard-order": "/tasks/bulk_update_taskboard_order"
     "tasks-restore": "/tasks/%s/restore"
     "issues": "/issues"
     "bulk-create-issues": "/issues/bulk_create"
@@ -83,6 +84,11 @@ urls = {
     "issue-types": "/issue-types"
     "priorities": "/priorities"
     "severities": "/severities"
+    "project-modules": "/projects/%s/modules"
+    "webhooks": "/webhooks"
+    "webhooks-test": "/webhooks/%s/test"
+    "webhooklogs": "/webhooklogs"
+    "webhooklogs-resend": "/webhooklogs/%s/resend"
 
     # History
     "history/us": "/history/userstory"
@@ -98,6 +104,10 @@ urls = {
 
     # Feedback
     "feedback": "/feedback"
+
+    # Export/Import
+    "exporter": "/exporter"
+    "importer": "/importer/load_dump"
 }
 
 # Initialize api urls service
@@ -138,5 +148,8 @@ module.run([
     "$tgMdRenderResourcesProvider",
     "$tgHistoryResourcesProvider",
     "$tgKanbanResourcesProvider",
+    "$tgModulesResourcesProvider",
+    "$tgWebhooksResourcesProvider",
+    "$tgWebhookLogsResourcesProvider",
     initResources
 ])

@@ -1,7 +1,9 @@
 .policy-table {
     .policy-table-row {
-        @include table-flex(stretch, center, flex, row, wrap, center);
+        align-items: center;
         border-bottom: 1px solid $whitish;
+        display: flex;
+        justify-content: center;
     }
 
     .policy-table-header {
@@ -17,20 +19,22 @@
     }
 
     .policy-table-project {
-        @include table-flex-child(3, 0, 0);
+        flex-basis: 0;
+        flex-grow: 3;
     }
 
     .policy-table-all,
     .policy-table-involved,
     .policy-table-none {
-        @include table-flex-child(1, 0, 0);
+        flex-basis: 0;
+        flex-grow: 1;
     }
     input {
         display: none;
         &:checked {
             +label {
-                @include transition(background .3s linear);
                 background: $green-taiga;
+                transition: background .3s linear;
             }
         }
     }
@@ -41,9 +45,9 @@
         display: block;
         padding: .5rem;
         &:hover {
-            @include transition(background .3s linear);
             background: $fresh-taiga;
             cursor: pointer;
+            transition: background .3s linear;
         }
     }
 }

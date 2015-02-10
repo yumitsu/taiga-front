@@ -5,15 +5,15 @@
         color: $grayer;
     }
     .edit-value {
-        @include transition(opacity .3s linear);
         @extend %medium;
         color: $gray-light;
         cursor: pointer;
         margin-left: .5rem;
         opacity: 0;
+        transition: opacity .3s linear;
     }
     .edit-role {
-        @include table-flex(stretch, left, center, row, wrap);
+        align-items: left;
         background-color: $whitish;
         display: none;
         margin-bottom: 1rem;
@@ -23,12 +23,12 @@
             width: 50%;
         }
         .icon-floppy {
-            @include transition(color.3s linear);
             color: $gray-light;
             margin-left: .5rem;
+            transition: color.3s linear;
             &:hover {
-                @include transition(color.3s linear);
                 color: $green-taiga;
+                transition: color.3s linear;
             }
         }
     }
@@ -55,7 +55,7 @@
         overflow: hidden;
         position: relative;
         width: 65px;
-        input[type=checkbox] {
+        input {
             cursor: pointer;
             height: 500px;
             left: -10px;
@@ -65,9 +65,9 @@
             width: 500px;
             z-index: 999;
             + div {
-                @include transition (all .2s linear);
                 background-color: $button-gray;
                 height: 25px;
+                transition: all .2s linear;
                 width: 50%;
             }
             ~ .check-text {
@@ -86,11 +86,11 @@
                 opacity: .6;
             }
         }
-        input[type=checkbox]:checked {
+        input:checked {
             + div {
-                @include transition (all .2s linear);
                 background-color: #74a218;
                 margin-left: 50%;
+                transition: all .2s linear;
             }
             ~ .check-yes {
                 opacity: .6;

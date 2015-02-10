@@ -41,7 +41,9 @@ CreateEditSprint = ($repo, $confirm, $rs, $rootscope, lightboxService, $loading)
             estimated_finish: null
         }
 
-        submit = (event) ->
+        submit = debounce 2000, (event) =>
+            event.preventDefault()
+
             target = angular.element(event.currentTarget)
             form = $el.find("form").checksley()
 
@@ -65,17 +67,17 @@ CreateEditSprint = ($repo, $confirm, $rs, $rootscope, lightboxService, $loading)
                 promise = $repo.save(newSprint)
                 broadcastEvent = "sprintform:edit:success"
 
-            $loading.start(target)
+            $loading.start(submitButton)
 
             promise.then (data) ->
-                $loading.finish(target)
+                $loading.finish(submitButton)
                 $scope.sprintsCounter += 1 if createSprint
                 $rootscope.$broadcast(broadcastEvent, data)
 
                 lightboxService.close($el)
 
             promise.then null, (data) ->
-                $loading.finish(target)
+                $loading.finish(submitButton)
 
                 form.setErrors(data)
                 if data._error_message
@@ -131,6 +133,7 @@ CreateEditSprint = ($repo, $confirm, $rs, $rootscope, lightboxService, $loading)
             $el.find(".button-green").text("Create") #TODO i18n
             lightboxService.open($el)
             $el.find(".sprint-name").focus()
+            $el.find(".last-sprint-name").removeClass("disappear")
 
         $scope.$on "sprintform:edit", (ctx, sprint) ->
             createSprint = false
@@ -152,9 +155,9 @@ CreateEditSprint = ($repo, $confirm, $rs, $rootscope, lightboxService, $loading)
             else
                 $el.find(".last-sprint-name").removeClass("disappear")
 
-        $el.on "click", ".button-green", debounce 2000, (event) ->
-            event.preventDefault()
-            submit(event)
+        submitButton = $el.find(".submit-button")
+
+        $el.on "submit", "form", submit
 
         $el.on "click", ".delete-sprint .icon-delete", (event) ->
             event.preventDefault()

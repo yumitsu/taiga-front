@@ -1,0 +1,30 @@
+section.admin-menu
+    header
+        h1 Admin
+
+    nav
+        ul
+            li#adminmenu-project-profile
+                a(href="", tg-nav="project-admin-project-profile-details:project=project.slug")
+                    span.title Project profile
+                    span.icon.icon-arrow-right
+            li#adminmenu-project-values
+                a(href="", tg-nav="project-admin-project-values-us-status:project=project.slug")
+                    span.title Custom Attributes
+                    span.icon.icon-arrow-right
+            li#adminmenu-memberships
+                a(href="" tg-nav="project-admin-memberships:project=project.slug")
+                    span.title Manage members
+                    span.icon.icon-arrow-right
+            li#adminmenu-roles
+                a(href="" tg-nav="project-admin-roles:project=project.slug")
+                    span.title Roles & Permissions
+                    span.icon.icon-arrow-right
+            li#adminmenu-third-parties
+                a(href="" tg-nav="project-admin-third-parties-webhooks:project=project.slug")
+                    span.title Integrations
+                    span.icon.icon-arrow-right
+            li#adminmenu-contrib(ng-show="contribPlugins.length > 0")
+                a(href="" tg-nav="project-admin-contrib:project=project.slug,plugin=contribPlugins[0].slug")
+                    span.title Plugins
+                    span.icon.icon-arrow-right

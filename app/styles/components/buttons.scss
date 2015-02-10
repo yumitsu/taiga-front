@@ -5,8 +5,8 @@
     text-transform: uppercase;
     &:hover,
     &.active {
-        @include transition (color .3s linear);
         color: $green-taiga;
+        transition: color .3s linear;
     }
     .icon {
         margin-right: .3rem;
@@ -17,8 +17,17 @@
     @extend %button;
 }
 
-a.button-green {
+button {
+    @extend %button;
+}
+
+.submit-button {
+    width: 100%;
+}
+
+.button-green {
     background: $green-taiga;
+    border: 0;
     color: $white;
     vertical-align: middle;
     &:hover,
@@ -34,7 +43,7 @@ a.button-green {
 a.button-gray {
     background: $button-gray;
     &:hover {
-        background: $button-gray-hover;
+        background: $fresh-taiga;
         color: $white;
     }
     span {
@@ -98,7 +107,22 @@ a.button-bulk {
         margin-right: 0;
     }
     &:hover {
-        @include transition (background .3s linear);
         background: $fresh-taiga;
+        transition: background .3s linear;
+    }
+}
+.button-github {
+    @extend %button;
+    background: $grayer;
+    vertical-align: middle;
+    .icon {
+        @extend %large;
+        color: $white;
+        margin-right: .5rem;
+        vertical-align: text-bottom;
+    }
+    &:hover {
+        background: $black;
+        transition: background .3s linear;
     }
 }

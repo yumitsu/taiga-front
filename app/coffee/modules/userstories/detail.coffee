@@ -50,7 +50,7 @@ class UserStoryDetailController extends mixOf(taiga.Controller, taiga.PageMixin)
 
     constructor: (@scope, @rootscope, @repo, @confirm, @rs, @params, @q, @location,
                   @log, @appTitle, @navUrls, @analytics, tgLoader) ->
-        @scope.issueRef = @params.issueref
+        @scope.usRef = @params.usref
         @scope.sectionName = "User Story Details"
         @.initializeEventHandlers()
 
@@ -60,10 +60,10 @@ class UserStoryDetailController extends mixOf(taiga.Controller, taiga.PageMixin)
         promise.then =>
             @appTitle.set(@scope.us.subject + " - " + @scope.project.name)
             @.initializeOnDeleteGoToUrl()
-            tgLoader.pageLoaded()
 
         # On Error
         promise.then null, @.onInitialDataError.bind(@)
+        promise.finally tgLoader.pageLoaded
 
     initializeEventHandlers: ->
         @scope.$on "related-tasks:update", =>
@@ -93,7 +93,8 @@ class UserStoryDetailController extends mixOf(taiga.Controller, taiga.PageMixin)
             @scope.onDeleteGoToUrl = @navUrls.resolve("project-kanban", ctx)
 
     loadProject: ->
-        return @rs.projects.get(@scope.projectId).then (project) =>
+        return @rs.projects.getBySlug(@params.pslug).then (project) =>
+            @scope.projectId = project.id
             @scope.project = project
             @scope.$emit('project:loaded', project)
             @scope.statusList = project.us_statuses
@@ -105,8 +106,9 @@ class UserStoryDetailController extends mixOf(taiga.Controller, taiga.PageMixin)
             return project
 
     loadUs: ->
-        return @rs.userstories.get(@scope.projectId, @scope.usId).then (us) =>
+        return @rs.userstories.getByRef(@scope.projectId, @params.usref).then (us) =>
             @scope.us = us
+            @scope.usId = us.id
             @scope.commentModel = us
 
             if @scope.us.neighbors.previous.ref?
@@ -137,20 +139,10 @@ class UserStoryDetailController extends mixOf(taiga.Controller, taiga.PageMixin)
             return tasks
 
     loadInitialData: ->
-        params = {
-            pslug: @params.pslug
-            usref: @params.usref
-        }
-
-        promise = @repo.resolve(params).then (data) =>
-            @scope.projectId = data.project
-            @scope.usId = data.us
-            return data
-
-        return promise.then(=> @.loadProject())
-                      .then(=> @.loadUsersAndRoles())
-                      .then(=> @q.all([@.loadUs().then(=> @.loadSprint()),
-                                       @.loadTasks()]))
+        promise = @.loadProject()
+        return promise.then (project) =>
+            @.fillUsersAndRoles(project.users, project.roles)
+            @.loadUs().then(=> @q.all([@.loadSprint(), @.loadTasks()]))
 
 module.controller("UserStoryDetailController", UserStoryDetailController)
 
@@ -159,7 +151,7 @@ module.controller("UserStoryDetailController", UserStoryDetailController)
 ## User story status display directive
 #############################################################################
 
-UsStatusDisplayDirective = ->
+UsStatusDisplayDirective = ($template) ->
     # Display if a US is open or closed and its kanban status.
     #
     # Example:
@@ -169,18 +161,7 @@ UsStatusDisplayDirective = ->
     #   - US object (ng-model)
     #   - scope.statusById object
 
-    template = _.template("""
-    <span>
-        <% if (is_closed) { %>
-            Closed
-        <% } else { %>
-            Open
-        <% } %>
-    </span>
-    <span class="us-detail-status" style="color:<%- status.color %>">
-        <%- status.name %>
-    </span>
-    """) # TODO: i18n
+    template = $template.get("common/components/status-display.html", true)
 
     link = ($scope, $el, $attrs) ->
         render = (us) ->
@@ -202,14 +183,14 @@ UsStatusDisplayDirective = ->
         require: "ngModel"
     }
 
-module.directive("tgUsStatusDisplay", UsStatusDisplayDirective)
+module.directive("tgUsStatusDisplay", ["$tgTemplate", UsStatusDisplayDirective])
 
 
 #############################################################################
 ## User story related tasts progress splay Directive
 #############################################################################
 
-UsTasksProgressDisplayDirective = ->
+UsTasksProgressDisplayDirective = ($template) ->
     # Display a progress bar with the stats of completed tasks.
     #
     # Example:
@@ -219,12 +200,7 @@ UsTasksProgressDisplayDirective = ->
     #   - Task object list (ng-model)
     #   - scope.taskStatusById object
 
-    template = _.template("""
-    <div class="current-progress" style="width:<%- progress %>%" />
-    <span clasS="tasks-completed">
-        <%- totalClosedTasks %>/<%- totalTasks %> tasks completed
-    </span>
-    """) # TODO: i18n
+    template = $template.get("us/us-task-progress.html", true)
 
     link = ($scope, $el, $attrs) ->
         render = (tasks) ->
@@ -252,183 +228,14 @@ UsTasksProgressDisplayDirective = ->
         require: "ngModel"
     }
 
-module.directive("tgUsTasksProgressDisplay", UsTasksProgressDisplayDirective)
-
-
-#############################################################################
-## User story estimation directive
-#############################################################################
-
-UsEstimationDirective = ($rootScope, $repo, $confirm) ->
-    # Display the points of a US and you can edit it.
-    #
-    # Example:
-    #     tg-us-estimation-progress-bar(ng-model="us")
-    #
-    # Requirements:
-    #   - Us object (ng-model)
-    #   - scope.project object
-    # Optionals:
-    #   - save-after-modify (boolean): save object after modify
-
-    mainTemplate = _.template("""
-    <ul class="points-per-role">
-        <li class="total">
-            <span class="points"><%- totalPoints %></span>
-            <span class="role">total</span>
-        </li>
-        <% _.each(roles, function(role) { %>
-        <li class="total <% if(editable){ %>clickable<% } %>" data-role-id="<%- role.id %>">
-            <span class="points"><%- role.points %></span>
-            <span class="role"><%- role.name %></span></li>
-        <% }); %>
-    </ul>
-    """)
-
-    pointsTemplate = _.template("""
-    <ul class="popover pop-points-open">
-        <% _.each(points, function(point) { %>
-        <li>
-            <% if (point.selected) { %>
-            <a href="" class="point" title="<%- point.name %>"
-               data-point-id="<%- point.id %>" data-role-id="<%- roleId %>"><%- point.name %></a>
-            <% } else { %>
-            <a href="" class="point active" title="<%- point.name %>"
-               data-point-id="<%- point.id %>" data-role-id="<%- roleId %>"><%- point.name %></a>
-            <% } %>
-        </li>
-        <% }); %>
-    </ul>
-    """)
-
-    link = ($scope, $el, $attrs, $model) ->
-        saveAfterModify = $attrs.saveAfterModify or false
-
-        isEditable = ->
-            if $model.$modelValue.id
-                return $scope.project.my_permissions.indexOf("modify_us") != -1
-            return $scope.project.my_permissions.indexOf("add_us") != -1
-
-        render = (us) ->
-            totalPoints = us.total_points or 0
-            computableRoles = _.filter($scope.project.roles, "computable")
-
-            roles = _.map computableRoles, (role) ->
-                pointId = us.points[role.id]
-                pointObj = $scope.pointsById[pointId]
-
-                role = _.clone(role, true)
-                role.points = if pointObj? and pointObj.name? then pointObj.name else "?"
-                return role
-
-            ctx = {
-                totalPoints: totalPoints
-                roles: roles
-                editable: isEditable()
-            }
-            html = mainTemplate(ctx)
-            $el.html(html)
-
-        renderPoints = (target, us, roleId) ->
-            points = _.map $scope.project.points, (point) ->
-                point = _.clone(point, true)
-                point.selected = if us.points[roleId] == point.id then false else true
-                return point
-
-            html = pointsTemplate({"points": points, roleId: roleId})
-
-            # Remove any prevous state
-            $el.find(".popover").popover().close()
-            $el.find(".pop-points-open").remove()
-
-            # If not showing role selection let's move to the left
-            if not $el.find(".pop-role:visible").css("left")?
-                $el.find(".pop-points-open").css("left", "110px")
-
-            $el.find(".pop-points-open").remove()
-
-            # Render into DOM and show the new created element
-            $el.find(target).append(html)
-
-            $el.find(".pop-points-open").popover().open(-> $(this).removeClass("active"))
-            $el.find(".pop-points-open").show()
-
-        calculateTotalPoints = (us) ->
-            values = _.map(us.points, (v, k) -> $scope.pointsById[v]?.value or 0)
-            if values.length == 0
-                return "0"
-            return _.reduce(values, (acc, num) -> acc + num)
-
-        $el.on "click", ".total.clickable", (event) ->
-            event.preventDefault()
-            event.stopPropagation()
-            return if not isEditable()
-
-            target = angular.element(event.currentTarget)
-            roleId = target.data("role-id")
-
-            us = $model.$modelValue
-            renderPoints(target, us, roleId)
-
-            target.siblings().removeClass('active')
-            target.addClass('active')
-
-        $el.on "click", ".point", (event) ->
-            event.preventDefault()
-            event.stopPropagation()
-            return if not isEditable()
-
-            target = angular.element(event.currentTarget)
-            roleId = target.data("role-id")
-            pointId = target.data("point-id")
-
-            $el.find(".popover").popover().close()
-
-            # NOTE: This block of code is strange and, sometimes, repetitive
-            #       but is the only solution I find to update the object
-            #       corectly
-            us = angular.copy($model.$modelValue)
-            points = _.clone($model.$modelValue.points, true)
-            points[roleId] = pointId
-            us.setAttr('points', points) if us.setAttr?
-            us.points = points
-            us.total_points = calculateTotalPoints(us)
-            $model.$setViewValue(us)
-
-            if saveAfterModify
-                # Edit in the detail page
-                onSuccess = ->
-                    $confirm.notify("success")
-                    $rootScope.$broadcast("history:reload")
-                onError = ->
-                    us.revert()
-                    $model.$setViewValue(us)
-                    $confirm.notify("error")
-                $repo.save($model.$modelValue).then(onSuccess, onError)
-            else
-                # Create or eedit in the lightbox
-                render($model.$modelValue)
-
-        $scope.$watch $attrs.ngModel, (us) ->
-            render(us) if us
-
-        $scope.$on "$destroy", ->
-            $el.off()
-
-    return {
-        link: link
-        restrict: "EA"
-        require: "ngModel"
-    }
-
-module.directive("tgUsEstimation", ["$rootScope", "$tgRepo", "$tgConfirm", UsEstimationDirective])
+module.directive("tgUsTasksProgressDisplay", ["$tgTemplate", UsTasksProgressDisplayDirective])
 
 
 #############################################################################
 ## User story status button directive
 #############################################################################
 
-UsStatusButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
+UsStatusButtonDirective = ($rootScope, $repo, $confirm, $loading, $qqueue, $template) ->
     # Display the status of a US and you can edit it.
     #
     # Example:
@@ -439,21 +246,7 @@ UsStatusButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
     #   - scope.statusById object
     #   - $scope.project.my_permissions
 
-    template = _.template("""
-    <div class="status-data <% if(editable){ %>clickable<% }%>">
-        <span class="level" style="background-color:<%- status.color %>"></span>
-        <span class="status-status"><%- status.name %></span>
-        <% if(editable){ %><span class="icon icon-arrow-bottom"></span><% }%>
-        <span class="level-name">status</span>
-
-        <ul class="popover pop-status">
-            <% _.each(statuses, function(st) { %>
-            <li><a href="" class="status" title="<%- st.name %>"
-                   data-status-id="<%- st.id %>"><%- st.name %></a></li>
-            <% }); %>
-        </ul>
-    </div>
-    """) #TODO: i18n
+    template = $template.get("us/us-status-button.html", true)
 
     link = ($scope, $el, $attrs, $model) ->
         isEditable = ->
@@ -469,27 +262,14 @@ UsStatusButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
             })
             $el.html(html)
 
-        $el.on "click", ".status-data", (event) ->
-            event.preventDefault()
-            event.stopPropagation()
-            return if not isEditable()
 
-            $el.find(".pop-status").popover().open()
-
-        $el.on "click", ".status", (event) ->
-            event.preventDefault()
-            event.stopPropagation()
-            return if not isEditable()
-
-            target = angular.element(event.currentTarget)
+        save = $qqueue.bindAdd (status) =>
+            us = $model.$modelValue.clone()
+            us.status = status
 
             $.fn.popover().closeAll()
 
-            us = $model.$modelValue.clone()
-            us.status = target.data("status-id")
             $model.$setViewValue(us)
-
-            $scope.$apply()
 
             onSuccess = ->
                 $confirm.notify("success")
@@ -503,7 +283,25 @@ UsStatusButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
                 $loading.finish($el.find(".level-name"))
 
             $loading.start($el.find(".level-name"))
+
             $repo.save($model.$modelValue).then(onSuccess, onError)
+
+        $el.on "click", ".status-data", (event) ->
+            event.preventDefault()
+            event.stopPropagation()
+            return if not isEditable()
+
+            $el.find(".pop-status").popover().open()
+
+        $el.on "click", ".status", (event) ->
+            event.preventDefault()
+            event.stopPropagation()
+            return if not isEditable()
+
+            target = angular.element(event.currentTarget)
+            status = target.data("status-id")
+
+            save(status)
 
         $scope.$watch $attrs.ngModel, (us) ->
             render(us) if us
@@ -517,7 +315,7 @@ UsStatusButtonDirective = ($rootScope, $repo, $confirm, $loading) ->
         require: "ngModel"
     }
 
-module.directive("tgUsStatusButton", ["$rootScope", "$tgRepo", "$tgConfirm", "$tgLoading",
+module.directive("tgUsStatusButton", ["$rootScope", "$tgRepo", "$tgConfirm", "$tgLoading","$tgQqueue", "$tgTemplate",
                                       UsStatusButtonDirective])
 
 
@@ -525,14 +323,8 @@ module.directive("tgUsStatusButton", ["$rootScope", "$tgRepo", "$tgConfirm", "$t
 ## User story team requirements button directive
 #############################################################################
 
-UsTeamRequirementButtonDirective = ($rootscope, $tgrepo, $confirm, $loading) ->
-    template = _.template("""
-    <label for="team-requirement"
-           class="button button-gray team-requirement <% if(canEdit){ %>editable<% }; %> <% if(isRequired){ %>active<% }; %>">
-        Team requirement
-    </label>
-    <input type="checkbox" id="team-requirement" name="team-requirement"/>
-    """) #TODO: i18n
+UsTeamRequirementButtonDirective = ($rootscope, $tgrepo, $confirm, $loading, $qqueue, $template) ->
+    template = $template.get("us/us-team-requirement-button.html", true)
 
     link = ($scope, $el, $attrs, $model) ->
         canEdit = ->
@@ -550,23 +342,31 @@ UsTeamRequirementButtonDirective = ($rootscope, $tgrepo, $confirm, $loading) ->
             html = template(ctx)
             $el.html(html)
 
-        $el.on "click", ".team-requirement", (event) ->
-            return if not canEdit()
-
+        save = $qqueue.bindAdd (team_requirement) =>
             us = $model.$modelValue.clone()
-            us.team_requirement = not us.team_requirement
+            us.team_requirement = team_requirement
+
             $model.$setViewValue(us)
 
             $loading.start($el.find("label"))
+
             promise = $tgrepo.save($model.$modelValue)
             promise.then =>
                 $loading.finish($el.find("label"))
                 $rootscope.$broadcast("history:reload")
+
             promise.then null, ->
                 $loading.finish($el.find("label"))
                 $confirm.notify("error")
                 us.revert()
                 $model.$setViewValue(us)
+
+        $el.on "click", ".team-requirement", (event) ->
+            return if not canEdit()
+
+            team_requirement = not $model.$modelValue.team_requirement
+
+            save(team_requirement)
 
         $scope.$watch $attrs.ngModel, (us) ->
             render(us) if us
@@ -580,20 +380,14 @@ UsTeamRequirementButtonDirective = ($rootscope, $tgrepo, $confirm, $loading) ->
         require: "ngModel"
     }
 
-module.directive("tgUsTeamRequirementButton", ["$rootScope", "$tgRepo", "$tgConfirm", "$tgLoading", UsTeamRequirementButtonDirective])
+module.directive("tgUsTeamRequirementButton", ["$rootScope", "$tgRepo", "$tgConfirm", "$tgLoading", "$tgQqueue", "$tgTemplate", UsTeamRequirementButtonDirective])
 
 #############################################################################
 ## User story client requirements button directive
 #############################################################################
 
-UsClientRequirementButtonDirective = ($rootscope, $tgrepo, $confirm, $loading) ->
-    template = _.template("""
-    <label for="client-requirement"
-           class="button button-gray client-requirement <% if(canEdit){ %>editable<% }; %> <% if(isRequired){ %>active<% }; %>">
-        Client requirement
-    </label>
-    <input type="checkbox" id="client-requirement" name="client-requirement"/>
-    """) #TODO: i18n
+UsClientRequirementButtonDirective = ($rootscope, $tgrepo, $confirm, $loading, $qqueue, $template) ->
+    template = $template.get("us/us-client-requirement-button.html", true)
 
     link = ($scope, $el, $attrs, $model) ->
         canEdit = ->
@@ -611,11 +405,10 @@ UsClientRequirementButtonDirective = ($rootscope, $tgrepo, $confirm, $loading) -
             html = template(ctx)
             $el.html(html)
 
-        $el.on "click", ".client-requirement", (event) ->
-            return if not canEdit()
-
+        save = $qqueue.bindAdd (client_requirement) =>
             us = $model.$modelValue.clone()
-            us.client_requirement = not us.client_requirement
+            us.client_requirement = client_requirement
+
             $model.$setViewValue(us)
 
             $loading.start($el.find("label"))
@@ -629,6 +422,12 @@ UsClientRequirementButtonDirective = ($rootscope, $tgrepo, $confirm, $loading) -
                 us.revert()
                 $model.$setViewValue(us)
 
+        $el.on "click", ".client-requirement", (event) ->
+            return if not canEdit()
+
+            client_requirement = not $model.$modelValue.client_requirement
+            save(client_requirement)
+
         $scope.$watch $attrs.ngModel, (us) ->
             render(us) if us
 
@@ -641,5 +440,5 @@ UsClientRequirementButtonDirective = ($rootscope, $tgrepo, $confirm, $loading) -
         require: "ngModel"
     }
 
-module.directive("tgUsClientRequirementButton", ["$rootScope", "$tgRepo", "$tgConfirm", "$tgLoading",
+module.directive("tgUsClientRequirementButton", ["$rootScope", "$tgRepo", "$tgConfirm", "$tgLoading", "$tgQqueue", "$tgTemplate",
                                                  UsClientRequirementButtonDirective])

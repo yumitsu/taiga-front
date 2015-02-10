@@ -28,6 +28,7 @@ exports.files = function () {
         'layout/issues',
         'layout/wiki',
         'layout/wiki-edit',
+        'layout/team',
 
         //#################################################
         //             components
@@ -50,10 +51,11 @@ exports.files = function () {
         'components/wysiwyg',
         'components/select-color',
         'components/loader',
-        'components/spinner',
+        'components/loading-bar',
         'components/help-notion-button',
         'components/beta',
         'components/markitup',
+        'components/markdown-help',
 
 
         //#################################################
@@ -71,6 +73,7 @@ exports.files = function () {
         'modules/common/related-tasks',
         'modules/common/history',
         'modules/common/wizard',
+        'modules/common/external-reference',
 
         //Project modules
         'modules/home-projects-list',
@@ -116,15 +119,23 @@ exports.files = function () {
         'modules/admin/admin-submenu-roles',
         'modules/admin/admin-roles',
         'modules/admin/admin-functionalities',
+        'modules/admin/admin-project-export',
         'modules/admin/admin-membership-table',
         'modules/admin/admin-project-profile',
         'modules/admin/default-values',
         'modules/admin/project-values',
+        'modules/admin/third-parties',
+        'modules/admin/admin-third-parties-webhooks',
+        'modules/admin/contrib',
 
         //Modules user Settings
         'modules/user-settings/user-profile',
         'modules/user-settings/user-change-password',
         'modules/user-settings/mail-notifications-table',
+
+        //Team
+        'modules/team/team-filters',
+        'modules/team/team-table',
 
         //#################################################
         //             Help

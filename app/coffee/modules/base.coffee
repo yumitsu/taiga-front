@@ -72,14 +72,18 @@ urls = {
 
     "project-issues-detail": "/project/:project/issue/:ref"
 
-    "project-wiki": "/project/:project/wiki",
-    "project-wiki-page": "/project/:project/wiki/:slug",
+    "project-wiki": "/project/:project/wiki"
+    "project-wiki-page": "/project/:project/wiki/:slug"
+
+    # Team
+    "project-team": "/project/:project/team"
 
     # Admin
     "project-admin-home": "/project/:project/admin/project-profile/details"
     "project-admin-project-profile-details": "/project/:project/admin/project-profile/details"
     "project-admin-project-profile-default-values": "/project/:project/admin/project-profile/default-values"
     "project-admin-project-profile-modules": "/project/:project/admin/project-profile/modules"
+    "project-admin-project-profile-export": "/project/:project/admin/project-profile/export"
     "project-admin-project-values-us-status": "/project/:project/admin/project-values/us-status"
     "project-admin-project-values-us-points": "/project/:project/admin/project-values/us-points"
     "project-admin-project-values-task-status": "/project/:project/admin/project-values/task-status"
@@ -89,6 +93,11 @@ urls = {
     "project-admin-project-values-issue-severities": "/project/:project/admin/project-values/issue-severities"
     "project-admin-memberships": "/project/:project/admin/memberships"
     "project-admin-roles": "/project/:project/admin/roles"
+    "project-admin-third-parties-webhooks": "/project/:project/admin/third-parties/webhooks"
+    "project-admin-third-parties-github": "/project/:project/admin/third-parties/github"
+    "project-admin-third-parties-gitlab": "/project/:project/admin/third-parties/gitlab"
+    "project-admin-third-parties-bitbucket": "/project/:project/admin/third-parties/bitbucket"
+    "project-admin-contrib": "/project/:project/admin/contrib/:plugin"
 
     # User settings
     "user-settings-user-profile": "/project/:project/user-settings/user-profile"

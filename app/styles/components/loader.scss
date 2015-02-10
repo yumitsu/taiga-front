@@ -1,5 +1,4 @@
 .loader {
-    @include transition(opacity .5s linear);
     background-color: $white;
     bottom: 0;
     display: none;
@@ -10,23 +9,23 @@
     right: 0;
     top: 0;
     width: 100%;
-    z-index: 99900;
+    z-index: -100;
     .container {
-        margin: 0 auto;
-        margin-top: 15%;
-        position: relative;
-        width: 150px;
+        align-items: center;
+        display: flex;
+        height: 100%;
+        justify-content: center;
+        width: 100%;
     }
     p {
         @extend %large;
-        color: $gray-light;
-        padding-top: 20px;
+        color: $gray;
         text-align: center;
     }
     &.active {
-        @include transition(opacity .5s linear);
-        background-color: rgba($white, .9);
+        background-color: rgba($white, .95);
         display: block;
         opacity: 1;
+        z-index: 99900;
     }
 }

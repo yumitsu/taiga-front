@@ -1,0 +1,39 @@
+.team-filters {
+    .search-in {
+        margin-bottom: 1rem;
+        position: relative;
+    }
+    nav {
+        li {
+            @extend %larger;
+            @extend %title;
+            border-bottom: 1px solid $gray-light;
+            text-transform: uppercase;
+            &:last-child {
+                border-bottom: 0;
+            }
+        }
+        a {
+            display: block;
+            padding: 1rem 0 1rem 1rem;
+            &:hover,
+            &.active {
+                color: $green-taiga;
+                transition: color .3s linear;
+            }
+            &.active.icon {
+                opacity: 1;
+                transition: opacity .3s linear;
+            }
+        }
+        .active {
+            opacity: 1;
+            transition: opacity .3s linear;
+        }
+        .icon {
+            color: $blackish;
+            float: right;
+            opacity: 0;
+        }
+    }
+}
